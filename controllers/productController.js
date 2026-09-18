@@ -26,13 +26,11 @@ const getProducts = async (req, res) => {
     // filter products by category if category query parameter(req.query) is provided
     const {category, name, sort, page = 1, limit =5} = req.query;
     const filter = {};
-    if (category){
-      filter.category = category;
-    }
+    if (category){ filter.category = category; }
     if (name){
       // $regex partial search, $options case-insensitive search
-      filter.name = { $regex: name, $options: "i" }; 
-    }
+      filter.name = { $regex: name, $options: "i" };  }
+      
 // pagination lagayi: --------------
     const skip = (page -1) * limit;
 
