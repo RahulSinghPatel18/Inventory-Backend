@@ -50,20 +50,21 @@ const getProducts = async (req, res) => {
     }
 
     const products = await query;
-    // Total Pages
+    // Total Pages 
     const totalPages = Math.ceil(totalProducts / limit);
 
     res.json({
       message: "Products fetched successfully",
       page: Number(page),
       limit: Number(limit),
-      totalProducts,
+      totalProducts, 
       totalPages,
       hasNextPage: Number(page) < totalPages,
       hasPreviousPage: Number(page) > 1,
       products
     });
-
+ 
+    
   } catch (error) {
     res.status(500).json({
       message: "Failed to fetch products",
