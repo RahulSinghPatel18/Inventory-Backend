@@ -25,6 +25,29 @@ const getProducts = async (req, res) => {
   try {
     // filter products by category if category query parameter(req.query) is provided
     const {category, name, sort, page = 1, limit =5} = req.query;
+// validation for page and limit query parameters
+      const pageNumber = Number(page);
+    const limitNumber = Number(limit);
+
+    if (
+      !Number.isInteger(pageNumber) ||
+      pageNumber < 1
+    ) {
+      return res.status(400).json({
+        message: "Page must be a positive integer"
+      });
+    }
+
+    if (
+      !Number.isInteger(limitNumber) ||
+      limitNumber < 1 ||
+      limitNumber > 100
+    ) {
+      return res.status(400).json({
+        message: "Limit must be between 1 and 100"
+      });
+    }
+
     const filter = {};
     if (category){ filter.category = category; }
     if (name){
@@ -32,13 +55,13 @@ const getProducts = async (req, res) => {
       filter.name = { $regex: name, $options: "i" };  }
       
 // pagination lagayi: --------------
-    const skip = (page -1) * limit;
+    const skip = (pageNumber -1) * limitNumber;
 
 // Total Products ------------------
     const totalProducts = await Product.countDocuments(filter);
     
 // query lgayi: ------------------
-    let query = Product.find(filter).skip(skip).limit(limit);
+    let query = Product.find(filter).skip(skip).limit(limitNumber);
 
 // Sorting lagayi: ----------------
     if (sort === "price_asc") {
@@ -55,12 +78,12 @@ const getProducts = async (req, res) => {
 
     res.json({
       message: "Products fetched successfully",
-      page: Number(page),
-      limit: Number(limit),
+      page: Number(pageNumber),
+      limit: Number(limitNumber),
       totalProducts, 
       totalPages,
-      hasNextPage: Number(page) < totalPages,
-      hasPreviousPage: Number(page) > 1,
+      hasNextPage: Number(pageNumber) < totalPages,
+      hasPreviousPage: Number(pageNumber) > 1,
       products
     });
  
