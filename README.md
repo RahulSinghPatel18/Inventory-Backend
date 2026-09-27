@@ -91,3 +91,121 @@ Product Model
 Mongoose
        ↓
 MongoDB Atlas
+
+
+
+---
+
+## Day 3 — Middleware, Authentication & User Management
+
+### Middleware
+
+* Middleware concept
+* `req`, `res`, `next`
+* Global Middleware
+* Route-specific Middleware
+* Logger Middleware
+* Request Method, URL and Time logging
+* Middleware execution flow
+
+### Authentication
+
+* API Key Authentication concept
+* JWT Authentication
+* `bcryptjs` for password hashing
+* `jsonwebtoken` for JWT
+* User Registration
+* User Login
+* JWT Token Generation
+* JWT Token Verification
+* `Authorization` Header
+* `Bearer Token`
+* Protected Routes
+
+### User Management
+
+* User Schema/Model
+* Name, Email and Password fields
+* Duplicate User checking
+* Password Hashing
+* Password Verification
+* Login Authentication
+* Profile API
+* Logged-in User data
+
+### JWT Concepts
+
+* `jwt.sign()`
+* `jwt.verify()`
+* JWT Payload
+* `decoded`
+* `req.user = decoded`
+* `req.user.userId`
+* `next()` after successful authentication
+
+### Additional Concepts
+
+* HTTP Headers
+* `Authorization` Header
+* `Bearer` authentication format
+* `req.body` for login/register data
+* `req.headers` for authentication data
+* Protected API request flow
+
+### Current Progress
+
+Middleware              ✅
+Logger Middleware       ✅
+User Model              ✅
+User Registration       ✅
+Password Hashing        ✅
+User Login              ✅
+JWT Authentication      ✅
+JWT Middleware          ✅
+Protected Routes        ✅
+Profile API             ✅
+Postman Testing         ✅
+
+### Authentication Flow
+
+Register
+
+↓
+
+Password Hashing
+
+↓
+
+MongoDB
+
+↓
+
+Login
+
+↓
+
+JWT Token
+
+↓
+
+Authorization Header
+
+↓
+
+JWT Middleware
+
+↓
+
+Token Verification
+
+↓
+
+`req.user`
+
+↓
+
+Protected Controller
+
+↓
+
+User Data
