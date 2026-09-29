@@ -4,11 +4,13 @@ const mongoose = require("mongoose");
 // Create a new product
 const createProduct = async (req, res) => {
   try {
-    const product = await Product.create(req.body);
+    const product = await Product.create({ ...req.body, createdBy: req.user.userId });
+    
+ 
 
     res.status(201).json({
       message: "Product created",
-      product: product
+      product: product,
     });
   } catch (error) {
     res.status(400).json({
@@ -24,7 +26,7 @@ const createProduct = async (req, res) => {
 const getProducts = async (req, res) => {
   try {
     // filter products by category if category query parameter(req.query) is provided
-    const {category, name, sort, page = 1, limit =5} = req.query;
+    const {category, name, sort, page = 1, limit = 4} = req.query;
 // validation for page and limit query parameters
       const pageNumber = Number(page);
     const limitNumber = Number(limit);
@@ -72,7 +74,7 @@ const getProducts = async (req, res) => {
       query = query.sort({ price: -1 });
     }
 
-    const products = await query;
+    const products = await query.populate("createdBy", "name email role"); // Populate createdBy field with username, email, and role
     // Total Pages 
     const totalPages = Math.ceil(totalProducts / limit);
 
@@ -108,7 +110,7 @@ const getProductById = async (req, res) => {
       });
     }
 
-    const product = await Product.findById(req.params.id);
+    const product = await Product.findById(req.params.id).populate("createdBy", "name email role");
 
     if (!product) {
       return res.status(404).json({
