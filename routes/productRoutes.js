@@ -1,5 +1,5 @@
 const express = require("express");
-const { createProduct,getProducts,getProductById,updateProduct,deleteProduct } = require("../controllers/productController");
+const { createProduct,getProducts,getProductById,updateProduct,deleteProduct,getProductStats } = require("../controllers/productController");
 const adminMiddleware = require("../middleware/roleMiddleware");
 
 const router = express.Router();
@@ -21,6 +21,9 @@ router.put("/Update/:id", adminMiddleware, updateProduct);
 
 // Delete product by ID
 router.delete("/Delete/:id", adminMiddleware, deleteProduct);
+
+// Get Stats
+router.get("/Stats", getProductStats);
 
 
 module.exports = router;

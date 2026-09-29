@@ -82,7 +82,7 @@ const loginUser = async (req, res) => {
     }
 
     const token = jwt.sign({
-        userId: user._id },
+      userId: user._id },
       process.env.JWT_SECRET, { expiresIn: "1d" }
     );
 
@@ -132,4 +132,53 @@ const getProfile = async (req, res) => {
 };
 
 
-module.exports = {registerUser, loginUser, getProfile};
+const updateProfile = async (req, res) => {
+try {
+
+
+const { name, profileImage } = req.body;
+
+const user = await User.findById(req.user.userId);
+
+if (!user) {
+  return res.status(404).json({
+    message: "User not found"
+  });
+}
+
+if (name) {
+  user.name = name;
+}
+
+if (profileImage !== undefined) {
+  user.profileImage = profileImage;
+}
+
+await user.save();
+
+res.json({
+  message: "Profile updated successfully",
+  user: {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    profileImage: user.profileImage
+  }
+});
+
+
+} catch (error) {
+
+
+res.status(500).json({
+  message: "Failed to update profile",
+  error: error.message
+});
+
+
+}
+};
+
+
+
+module.exports = { registerUser, loginUser, getProfile, updateProfile };

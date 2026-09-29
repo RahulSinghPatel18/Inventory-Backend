@@ -200,12 +200,54 @@ const deleteProduct = async (req, res) => {
   }
 };
 
+
+
+const getProductStats = async (req, res) => {
+  try {
+    const totalProducts = await Product.countDocuments();
+
+    const stockResult = await Product.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalStock: { $sum: "$quantity" },
+          totalInventoryValue: {
+          $sum: { $multiply: ["$price", "$quantity"] }
+          }
+        }
+      }
+    ]);
+
+    const lowStockProducts = await Product.countDocuments({
+      quantity: { $gt: 0, $lte: 5 }
+    });
+
+    const outOfStockProducts = await Product.countDocuments({
+      quantity: 0
+    });
+
+    res.status(200).json({
+      totalProducts,
+      totalStock: stockResult[0]?.totalStock || 0,
+      lowStockProducts,
+      outOfStockProducts,
+      totalInventoryValue: stockResult[0]?.totalInventoryValue || 0,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to get product statistics",
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   createProduct,
   getProducts,
   getProductById,
   updateProduct,
-  deleteProduct
+  deleteProduct,
+  getProductStats
 };
 
 
