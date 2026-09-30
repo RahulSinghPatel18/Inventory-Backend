@@ -4,10 +4,11 @@ const mongoose = require("mongoose");
 // Create a new product
 const createProduct = async (req, res) => {
   try {
-    const product = await Product.create({ ...req.body, createdBy: req.user.userId });
+    const product = await Product.create({ 
+      ...req.body,
+       organizationId: req.user.organizationId, 
+       createdBy: req.user.userId });
     
- 
-
     res.status(201).json({
       message: "Product created",
       product: product,
@@ -50,7 +51,8 @@ const getProducts = async (req, res) => {
       });
     }
 
-    const filter = {};
+const filter = { organizationId: req.user.organizationId };
+
     if (category){ filter.category = category; }
     if (name){
       // $regex partial search, $options case-insensitive search
@@ -110,7 +112,10 @@ const getProductById = async (req, res) => {
       });
     }
 
-    const product = await Product.findById(req.params.id).populate("createdBy", "name email role");
+    const product = await Product.findById({
+        _id: req.params.id,
+        organizationId: req.user.organizationId
+    }).populate("createdBy", "name email role");
 
     if (!product) {
       return res.status(404).json({
@@ -134,70 +139,92 @@ const getProductById = async (req, res) => {
 // PUT /products/:id
 // Update product by ID
 const updateProduct = async (req, res) => {
-  try {
+try {
 
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({
-        message: "Invalid product ID"
-      });
-    }
+if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+  return res.status(400).json({
+    message: "Invalid product ID"
+  });
+}
 
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-     { new: true,
-     runValidators: true }
-    );
+const { name, price, quantity, category } = req.body;
 
-    if (!product) {
-      return res.status(404).json({
-        message: "Product not found"
-      });
-    }
+const updateData = {};
 
-    res.json({
-      message: "Product updated successfully",
-      product
-    });
+if (name !== undefined) updateData.name = name;
+if (price !== undefined) updateData.price = price;
+if (quantity !== undefined) updateData.quantity = quantity;
+if (category !== undefined) updateData.category = category;
 
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to update product",
-      error: error.message
-    });
+if (Object.keys(updateData).length === 0) {
+  return res.status(400).json({
+    message: "At least one field is required to update"
+  });
+}
+
+const product = await Product.findOneAndUpdate(
+  {
+    _id: req.params.id,
+    organizationId: req.user.organizationId
+  },
+  updateData,
+  {
+    new: true,
+    runValidators: true
   }
-};
+);
 
+if (!product) {
+  return res.status(404).json({
+    message: "Product not found"
+  });
+}
+
+res.json({
+  message: "Product updated successfully",
+  product
+});
+
+} catch (error) {
+res.status(500).json({
+message: "Failed to update product",
+error: error.message
+});
+}
+};
 // DELETE /products/:id
 // Delete product by ID
 const deleteProduct = async (req, res) => {
-  try {
+try {
 
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return res.status(400).json({
-        message: "Invalid product ID"
-      });
-    }
+if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+  return res.status(400).json({
+    message: "Invalid product ID"
+  });
+}
 
-    const product = await Product.findByIdAndDelete(req.params.id);
+const product = await Product.findOneAndDelete({
+  _id: req.params.id,
+  organizationId: req.user.organizationId
+});
 
-    if (!product) {
-      return res.status(404).json({
-        message: "Product not found"
-      });
-    }
+if (!product) {
+  return res.status(404).json({
+    message: "Product not found"
+  });
+}
 
-    res.json({
-      message: "Product deleted successfully",
-      product
-    });
+res.json({
+  message: "Product deleted successfully",
+  product
+});
 
-  } catch (error) {
-    res.status(500).json({
-      message: "Failed to delete product",
-      error: error.message
-    });
-  }
+} catch (error) {
+res.status(500).json({
+message: "Failed to delete product",
+error: error.message
+});
+}
 };
 
 

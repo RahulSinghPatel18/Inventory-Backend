@@ -1,15 +1,16 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const User = require("../models/User");
+const Organization = require("../models/Organization");
 
 const registerUser = async (req, res) => {
   try {
 
-    const { name, email, password } = req.body;
+    const { name, email, password, organizationName } = req.body;
 
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !organizationName) {
       return res.status(400).json({
-        message: "Name, email and password are required"
+        message: "Name, email, password and organizationName are required"
       });
     }
 
@@ -21,12 +22,26 @@ const registerUser = async (req, res) => {
       });
     }
 
+
+
+let organization = await Organization.findOne({
+  name: organizationName.trim()
+});
+
+if (!organization) {
+  organization = await Organization.create({
+    name: organizationName.trim()
+  });
+}
+
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const user = await User.create({
       name,
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      organizationId: organization._id,
+      role : "admin"
     });
 
     res.status(201).json({
@@ -34,7 +49,8 @@ const registerUser = async (req, res) => {
       user: {
         id: user._id,
         name: user.name,
-        email: user.email
+        email: user.email,
+        organizationId: user.organizationId
       }
     });
 
@@ -82,7 +98,11 @@ const loginUser = async (req, res) => {
     }
 
     const token = jwt.sign({
-      userId: user._id },
+      userId: user._id ,
+      role: user.role,
+      organizationId: user.organizationId
+    },
+      
       process.env.JWT_SECRET, { expiresIn: "1d" }
     );
 

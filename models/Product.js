@@ -19,16 +19,24 @@ const productSchema = new mongoose.Schema({
     min: [0, "Quantity cannot be negative"]
   },
 
-  category: {
+    category: {
     type: String,
     required: true,
     trim: true
   },
+
+  organizationId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "Organization",
+    required: true
+    },
+
   createdBy: {
   type: mongoose.Schema.Types.ObjectId,
   ref: "User",
   required: true
 }
+
 });
 
 const Product = mongoose.model("Product", productSchema);
