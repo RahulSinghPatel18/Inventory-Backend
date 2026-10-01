@@ -346,14 +346,15 @@ const getProductStats = async (req, res) => {
       }
     ]);
 
-    const lowStockProducts = await Product.countDocuments({
-      quantity: { $gt: 0, $lte: 5 }
-    });
+const lowStockProducts = await Product.countDocuments({
+organizationId,
+quantity: { $gt: 0, $lte: 5 }
+});
 
-    const outOfStockProducts = await Product.countDocuments({
-      quantity: 0
-    });
-
+const outOfStockProducts = await Product.countDocuments({
+organizationId,
+quantity: 0
+});
     res.status(200).json({
       totalProducts,
       totalStock: stockResult[0]?.totalStock || 0,
