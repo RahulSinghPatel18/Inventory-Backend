@@ -326,9 +326,15 @@ error: error.message
 
 const getProductStats = async (req, res) => {
   try {
-    const totalProducts = await Product.countDocuments();
+    const organizationId = req.user.organizationId;
+    const totalProducts = await Product.countDocuments({organizationId});
 
     const stockResult = await Product.aggregate([
+       {
+    $match: {
+      organizationId: new mongoose.Types.ObjectId(organizationId)
+    }
+  },
       {
         $group: {
           _id: null,
