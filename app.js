@@ -4,6 +4,7 @@ const loggerMiddleware = require("./middleware/loggerMiddleware");
 const jwtMiddleware = require("./middleware/jwtMiddleware");
 const userRoutes = require("./routes/userRoutes");
 const categoryRoutes = require("./routes/categoryRoutes");
+const stockRoutes = require("./routes/stockRoutes");
 const cors = require("cors");
 
 const app = express();
@@ -16,6 +17,7 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/products", loggerMiddleware, jwtMiddleware, productRoutes);
 app.use("/users", userRoutes);
 app.use("/categories", loggerMiddleware, jwtMiddleware, categoryRoutes);
+app.use("/stock", loggerMiddleware, jwtMiddleware, stockRoutes);
 
 app.get("/", (req, res) => {
 res.json({

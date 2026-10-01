@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 const Category = require("../models/Category");
-
+const Product = require("../models/Product");
 
 
 
@@ -138,6 +138,13 @@ const createCategory = async (req, res) => {
                   };
                   
             
+
+
+
+
+
+
+
           const getCategoryById = async (req, res) => {
                     try {
                     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
@@ -170,37 +177,64 @@ const createCategory = async (req, res) => {
                     }
                     }; 
             
-    const deleteCategory = async (req, res) => {
-            try {
-            if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-            return res.status(400).json({
-            message: "Invalid category ID"
-            });
-            }
-            
-            const category = await Category.findOneAndDelete({
-              _id: req.params.id,
-              organizationId: req.user.organizationId
-            });
-            
-            if (!category) {
-              return res.status(404).json({
-                message: "Category not found"
-              });
-            }
-            
-            res.json({
-              message: "Category deleted successfully",
-              category
-            });
-            
-            } catch (error) {
-            res.status(500).json({
-            message: "Failed to delete category",
-            error: error.message
-            });
-            }
-            };
+
+
+
+
+
+
+
+                  const deleteCategory = async (req, res) => {
+                try {
+                
+                
+                if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+                  return res.status(400).json({
+                    message: "Invalid category ID"
+                  });
+                }
+                
+                const category = await Category.findOne({
+                  _id: req.params.id,
+                  organizationId: req.user.organizationId
+                });
+                
+                if (!category) {
+                  return res.status(404).json({
+                    message: "Category not found"
+                  });
+                }
+                
+                const products = await Product.countDocuments({
+                  category: req.params.id,
+                  organizationId: req.user.organizationId
+                });
+                
+                if (products > 0) {
+                  return res.status(400).json({
+                    message: "Category cannot be deleted because products are using it"
+                  });
+                }
+                
+                await Category.findOneAndDelete({
+                  _id: req.params.id,
+                  organizationId: req.user.organizationId
+                });
+                
+                res.json({
+                  message: "Category deleted successfully",
+                  category
+                });
+                
+                
+                } catch (error) {
+                res.status(500).json({
+                message: "Failed to delete category",
+                error: error.message
+                });
+                }
+                };
+
 
 
 

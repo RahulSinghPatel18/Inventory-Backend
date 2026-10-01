@@ -128,7 +128,7 @@ const loginUser = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
 
-    const user = await User.findById(req.user.userId).select("-password");
+    const user = await User.findById(req.user.userId).select("-password").populate("organizationId", "name");
 
     if (!user) {
       return res.status(404).json({
@@ -136,9 +136,16 @@ const getProfile = async (req, res) => {
       });
     }
 
+    const profile = user.toObject();
+    const organization = profile.organizationId;
+
     res.json({
       message: "Profile fetched successfully",
-      user
+      user: {
+        ...profile,
+        organizationId: organization?._id || "",
+        organizationName: organization?.name || ""
+      }
     });
 
   } catch (error) {

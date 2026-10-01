@@ -19,11 +19,11 @@ const productSchema = new mongoose.Schema({
     min: [0, "Quantity cannot be negative"]
   },
 
-    category: {
-    type: String,
-    required: true,
-    trim: true
-  },
+   category: {
+type: mongoose.Schema.Types.ObjectId,
+ref: "Category",
+required: [true, "Category is required"]
+},
 
   organizationId: {
     type: mongoose.Schema.Types.ObjectId,

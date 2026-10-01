@@ -1,25 +1,64 @@
 const Product = require("../models/Product");
 const mongoose = require("mongoose");
-// POST /products
-// Create a new product
+const Category = require("../models/Category")
+
+
+
+
+
+
+
+
 const createProduct = async (req, res) => {
-  try {
-    const product = await Product.create({ 
-      ...req.body,
-       organizationId: req.user.organizationId, 
-       createdBy: req.user.userId });
-    
-    res.status(201).json({
-      message: "Product created",
-      product: product,
-    });
-  } catch (error) {
-    res.status(400).json({
-      message: "Product creation failed",
-      error: error.message
-    });
-  }
+try {
+const { name, price, quantity, category } = req.body;
+
+if (!mongoose.Types.ObjectId.isValid(category)) {
+  return res.status(400).json({
+    message: "Invalid category ID"
+  });
+}
+
+const categoryExists = await Category.findOne({
+  _id: category,
+  organizationId: req.user.organizationId
+});
+
+if (!categoryExists) {
+  return res.status(404).json({
+    message: "Category not found"
+  });
+}
+
+const product = await Product.create({
+  name,
+  price,
+  quantity,
+  category,
+  organizationId: req.user.organizationId,
+  createdBy: req.user.userId
+});
+
+res.status(201).json({
+  message: "Product created successfully",
+  product
+});
+
+} catch (error) {
+res.status(400).json({
+message: "Product creation failed",
+error: error.message
+});
+}
 };
+
+
+
+
+
+
+
+
 
 
 // GET /products
@@ -53,7 +92,15 @@ const getProducts = async (req, res) => {
 
 const filter = { organizationId: req.user.organizationId };
 
-    if (category){ filter.category = category; }
+ if (category) {
+if (!mongoose.Types.ObjectId.isValid(category)) {
+return res.status(400).json({
+message: "Invalid category ID"
+});
+}
+
+filter.category = category;
+}
     if (name){
       // $regex partial search, $options case-insensitive search
       filter.name = { $regex: name, $options: "i" };  }
@@ -76,7 +123,7 @@ const filter = { organizationId: req.user.organizationId };
       query = query.sort({ price: -1 });
     }
 
-    const products = await query.populate("createdBy", "name email role"); // Populate createdBy field with username, email, and role
+    const products = await query.populate("category", "name").populate("createdBy", "name email role"); // Populate createdBy field with username, email, and role
     // Total Pages 
     const totalPages = Math.ceil(totalProducts / limit);
 
@@ -99,6 +146,13 @@ const filter = { organizationId: req.user.organizationId };
     });
   }
 };
+
+
+
+
+
+
+
 
 
 // GET /products/:id
@@ -136,16 +190,24 @@ const getProductById = async (req, res) => {
   }
 };
 
+
+
+
+
+
+
+
+
 // PUT /products/:id
 // Update product by ID
 const updateProduct = async (req, res) => {
 try {
-
 if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-  return res.status(400).json({
-    message: "Invalid product ID"
-  });
+return res.status(400).json({
+message: "Invalid product ID"
+});
 }
+
 
 const { name, price, quantity, category } = req.body;
 
@@ -154,7 +216,27 @@ const updateData = {};
 if (name !== undefined) updateData.name = name;
 if (price !== undefined) updateData.price = price;
 if (quantity !== undefined) updateData.quantity = quantity;
-if (category !== undefined) updateData.category = category;
+
+if (category !== undefined) {
+  if (!mongoose.Types.ObjectId.isValid(category)) {
+    return res.status(400).json({
+      message: "Invalid category ID"
+    });
+  }
+
+  const categoryExists = await Category.findOne({
+    _id: category,
+    organizationId: req.user.organizationId
+  });
+
+  if (!categoryExists) {
+    return res.status(404).json({
+      message: "Category not found"
+    });
+  }
+
+  updateData.category = category;
+}
 
 if (Object.keys(updateData).length === 0) {
   return res.status(400).json({
@@ -172,7 +254,9 @@ const product = await Product.findOneAndUpdate(
     new: true,
     runValidators: true
   }
-);
+)
+  .populate("category", "name")
+  .populate("createdBy", "name email role");
 
 if (!product) {
   return res.status(404).json({
@@ -185,6 +269,7 @@ res.json({
   product
 });
 
+
 } catch (error) {
 res.status(500).json({
 message: "Failed to update product",
@@ -192,6 +277,13 @@ error: error.message
 });
 }
 };
+
+
+
+
+
+
+
 // DELETE /products/:id
 // Delete product by ID
 const deleteProduct = async (req, res) => {
@@ -216,7 +308,6 @@ if (!product) {
 
 res.json({
   message: "Product deleted successfully",
-  product
 });
 
 } catch (error) {
@@ -226,6 +317,10 @@ error: error.message
 });
 }
 };
+
+
+
+
 
 
 
