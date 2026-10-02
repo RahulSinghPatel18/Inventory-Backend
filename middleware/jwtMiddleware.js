@@ -1,39 +1,33 @@
 const jwt = require("jsonwebtoken");
+const { isValidObjectId } = require("../utils/requestValidation");
 
 const jwtMiddleware = (req, res, next) => {
+  const authorization = req.headers.authorization;
+  const [scheme, token, extra] = authorization?.split(" ") || [];
+  if (scheme !== "Bearer" || !token || extra) {
+    return res.status(401).json({
+      message: "A valid Bearer token is required"
+    });
+  }
+
   try {
-
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      return res.status(401).json({
-        message: "Authorization token is required"
-      });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      algorithms: ["HS256"]
+    });
+    if (
+      !isValidObjectId(decoded.userId) ||
+      !isValidObjectId(decoded.organizationId) ||
+      !["admin", "Admin", "user"].includes(decoded.role)
+    ) {
+      return res.status(401).json({ message: "Invalid or expired token" });
     }
-
-    const token = authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        message: "Invalid authorization format"
-      });
-    }
-
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET
-    );
 
     req.user = decoded;
-
-    next();
-
-  } catch (error) {
-
+    return next();
+  } catch {
     return res.status(401).json({
       message: "Invalid or expired token"
     });
-
   }
 };
 

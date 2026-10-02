@@ -25,6 +25,7 @@ createdBy: {
 { organizationId: 1, name: 1 },
 { unique: true }
 );
+       categorySchema.index({ organizationId: 1, createdAt: -1 });
 
 
 const Category = mongoose.model("Category", categorySchema);

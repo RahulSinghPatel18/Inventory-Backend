@@ -39,6 +39,10 @@ required: [true, "Category is required"]
 
 });
 
+productSchema.index({ organizationId: 1, category: 1 });
+productSchema.index({ organizationId: 1, quantity: 1 });
+productSchema.index({ organizationId: 1, price: 1 });
+
 const Product = mongoose.model("Product", productSchema);
 
 module.exports = Product;

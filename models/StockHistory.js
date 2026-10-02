@@ -32,6 +32,8 @@ const stockHistorySchema = new mongoose.Schema({
                }
           }, { timestamps: true });
 
+stockHistorySchema.index({ organizationId: 1, createdAt: -1 });
+stockHistorySchema.index({ organizationId: 1, productId: 1, createdAt: -1 });
 
 
 

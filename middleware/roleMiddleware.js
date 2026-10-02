@@ -3,11 +3,11 @@ const User = require("../models/User");
 const adminMiddleware = async (req, res, next) => {
   try {
 
-    const user = await User.findById(req.user.userId);
+    const user = await User.findById(req.user.userId).select("role organizationId");
 
-    if (!user) {
-      return res.status(404).json({
-        message: "User not found"
+    if (!user || String(user.organizationId) !== String(req.user.organizationId)) {
+      return res.status(401).json({
+        message: "Authentication required"
       });
     }
 
@@ -20,12 +20,10 @@ const adminMiddleware = async (req, res, next) => {
     next();
 
   } catch (error) {
-
-    res.status(500).json({
-      message: "Authorization failed",
-      error: error.message
+    console.error(`Authorization check failed (${error.name || "Error"})`);
+    return res.status(500).json({
+      message: "Authorization check failed"
     });
-
   }
 };
 
