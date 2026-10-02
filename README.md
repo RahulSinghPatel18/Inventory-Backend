@@ -1,216 +1,148 @@
-# Inventory Management Backend
+# InventoryStack Backend
 
-## Day 1 — Basic Setup & Product CRUD
+REST API for inventory management, built with Node.js, Express and MongoDB/Mongoose.
 
-### Setup
-- Node.js project setup
-- `npm init`
-- Express, Mongoose, dotenv install
-- Basic Express server
-- MongoDB Atlas connection
-- `.env` setup
+## Features
 
-### Project Structure
-- `server.js`
-- `app.js`
-- `config/db.js`
-- `models/Product.js`
-- `routes/productRoutes.js`
-- `controllers/productController.js`
+- User registration/login, bcrypt password hashing and JWT authentication.
+- Organization-scoped users, categories, products and stock history.
+- Product/category CRUD and inventory statistics.
+- Stock in/out, movement history, low/out-of-stock alerts and summaries.
+- Input validation, pagination, search, indexes, CORS allow-list and auth rate limits.
 
-### Product
-- Product Schema/Model
-- Fields: name, price, quantity, category
-- Mongoose validation
+## Request flow
 
-### CRUD APIs
-- Create → `POST`
-- Get All → `GET`
-- Get By ID → `GET`
-- Update → `PUT`
-- Delete → `DELETE`
+```text
+Client → server.js → app.js → routes → middleware → controllers
+       → Mongoose models → MongoDB
+```
 
-### Testing & Git
-- Postman API testing
-- MongoDB data verification
-- Invalid data testing
-- `.gitignore` and `.env` protection
-- GitHub push
+- `server.js`: loads `.env`, checks `MONGO_URI`/`JWT_SECRET`, connects DB, starts server.
+- `app.js`: configures CORS, security headers, JSON parsing, routes, 404 and error handling.
+- `routes/`: maps HTTP paths to controller functions.
+- `middleware/`: JWT, admin authorization, rate limiting and request logging.
+- `controllers/`: validates input, applies business rules, queries models and returns JSON.
+- `models/`: MongoDB schemas, references, validation and indexes.
+- `utils/`: shared input validation and controller error handling.
 
----
+## Run locally
 
-## Day 2 — Request Handling & Error Handling
+Requires Node.js, npm and a MongoDB deployment that supports transactions (Atlas/replica set).
 
-### Concepts
-- `req.body` → request data
-- `req.params` → URL parameters
-- `req.query` → URL query parameters
-- `async/await` → asynchronous operations
-- `try/catch` → error handling
-- `ObjectId.isValid()` → MongoDB ID validation
-- `400` → invalid request/data
-- `404` → resource not found
-- `runValidators` → update validation
+1. Install dependencies: `npm install`
+2. Create `.env` in the project root:
 
-### CRUD Improvements
-- Invalid ID handling
-- Product Not Found handling
-- Update validation
-- Proper error responses
+   ```env
+   MONGO_URI=<MongoDB connection string>
+   JWT_SECRET=<long private random secret>
+   PORT=3000
+   NODE_ENV=development
+   ```
 
----
+3. Start: `npm run dev` (development) or `npm start`.
+4. Check `GET http://localhost:3000/`.
 
-## Current Progress
+Keep `.env` private and untracked. Add extra exact frontend origins with comma-separated `CORS_ORIGINS`. Behind a reverse proxy, set `TRUST_PROXY_HOPS` to the exact trusted hop count.
 
-Basic Server       ✅
-MongoDB            ✅
-Mongoose           ✅
-Model              ✅
-Routes             ✅
-Controllers        ✅
-CRUD               ✅
-Validation         ✅
-Error Handling     ✅
-Postman            ✅
-Git/GitHub         ✅
+## Authentication
 
-## API Flow
+- Register and login are public. Registration creates a new organization and its first admin.
+- Login returns a JWT signed with `HS256`, valid for one day.
+- Send the token to protected APIs:
 
-Client / Postman
-       ↓
-server.js
-       ↓
-app.js
-       ↓
-Routes
-       ↓
-Controllers
-       ↓
-Product Model
-       ↓
-Mongoose
-       ↓
-MongoDB Atlas
+  ```http
+  Authorization: Bearer <JWT_TOKEN>
+  ```
 
+- Products, categories and stock require JWT. Product create/update/delete additionally require admin; category and stock routes allow any authenticated organization member.
+- Data queries are scoped by the token's `organizationId`.
+- Login limit: 10 requests/IP/15 min. Registration limit: 5 requests/IP/hour.
 
+## API reference
 
----
+Default base URL: `http://localhost:3000`. Paths use the capitalization shown.
 
-## Day 3 — Middleware, Authentication & User Management
+| Method | Path | Access | Purpose |
+|---|---|---|---|
+| `GET` | `/` | Public | Health check |
+| `POST` | `/users/Register` | Public | Create organization and admin |
+| `POST` | `/users/Login` | Public, rate-limited | Login and get JWT |
+| `GET` | `/users/Profile` | JWT | Get own profile |
+| `PUT` | `/users/UpdateProfile` | JWT | Update own name/profile image |
+| `POST` | `/products/Create` | JWT + admin | Create product |
+| `GET` | `/products/GetAll` | JWT | List/search/filter products |
+| `GET` | `/products/GetById/:id` | JWT | Get product |
+| `PUT` | `/products/Update/:id` | JWT + admin | Update product |
+| `DELETE` | `/products/Delete/:id` | JWT + admin | Delete product |
+| `GET` | `/products/Stats` | JWT | Product and inventory totals |
+| `POST` | `/categories/Create` | JWT | Create category |
+| `GET` | `/categories/GetAll` | JWT | List/search categories |
+| `GET` | `/categories/GetById/:id` | JWT | Get category |
+| `PUT` | `/categories/Update/:id` | JWT | Rename category |
+| `DELETE` | `/categories/Delete/:id` | JWT | Delete if unused by products |
+| `GET` | `/categories/Stats` | JWT | Per-category inventory totals |
+| `POST` | `/stock/In` | JWT | Add stock and record movement |
+| `POST` | `/stock/Out` | JWT | Remove available stock and record movement |
+| `GET` | `/stock/History` | JWT | Filter/sort movement history |
+| `GET` | `/stock/LowStock` | JWT | Products with quantity 1–5 |
+| `GET` | `/stock/OutOfStock` | JWT | Products with quantity 0 |
+| `GET` | `/stock/Summary?productId=<id>` | JWT | Product's current and total in/out stock |
 
-### Middleware
+Example bodies:
 
-* Middleware concept
-* `req`, `res`, `next`
-* Global Middleware
-* Route-specific Middleware
-* Logger Middleware
-* Request Method, URL and Time logging
-* Middleware execution flow
+```json
+// Register
+{ "name": "Asha", "email": "asha@example.com", "password": "minimum-8-characters", "organizationName": "Example Store" }
 
-### Authentication
+// Create product
+{ "name": "Notebook", "price": 50, "quantity": 20, "category": "<category ObjectId>" }
 
-* API Key Authentication concept
-* JWT Authentication
-* `bcryptjs` for password hashing
-* `jsonwebtoken` for JWT
-* User Registration
-* User Login
-* JWT Token Generation
-* JWT Token Verification
-* `Authorization` Header
-* `Bearer Token`
-* Protected Routes
+// Stock in/out
+{ "productId": "<product ObjectId>", "quantity": 5 }
+```
 
-### User Management
+List APIs accept `page` and `limit` (defaults: `1`, `10`; max limit: `100`). Products support `category`, `name`, `sort=price_asc|price_desc`; categories support `search`/`name` and `sort=name_asc|name_desc|newest|oldest`; stock history supports `productId`, `type=in|out`, `search`, `startDate`, `endDate` and `sort=newest|oldest|quantity_asc|quantity_desc`.
 
-* User Schema/Model
-* Name, Email and Password fields
-* Duplicate User checking
-* Password Hashing
-* Password Verification
-* Login Authentication
-* Profile API
-* Logged-in User data
+## Data models
 
-### JWT Concepts
+| Model | Main fields and relationships |
+|---|---|
+| `Organization` | Unique name |
+| `User` | Name, unique email, hidden password hash, role, organization, profile image |
+| `Category` | Name, organization, creator |
+| `Product` | Name, price, quantity, category, organization, creator |
+| `StockHistory` | Product, `in/out` type, quantity, organization, creator, timestamps |
 
-* `jwt.sign()`
-* `jwt.verify()`
-* JWT Payload
-* `decoded`
-* `req.user = decoded`
-* `req.user.userId`
-* `next()` after successful authentication
+Each document has MongoDB `_id` (ObjectId). References do not automatically cascade like SQL foreign keys. Category names are unique per organization; products and stock history have organization-oriented indexes. Product deletion does not delete its stock history.
 
-### Additional Concepts
+## Validation, errors and security
 
-* HTTP Headers
-* `Authorization` Header
-* `Bearer` authentication format
-* `req.body` for login/register data
-* `req.headers` for authentication data
-* Protected API request flow
+- IDs must be 24-character ObjectId strings; pagination values must be positive integers.
+- Search is limited to 100 characters and regex characters are escaped.
+- Product name is required; price is finite and non-negative; quantity is a non-negative integer; category must belong to the same organization.
+- Registration requires a valid-looking email, non-empty name/organization and password of 8–72 UTF-8 bytes. Profile image is a string capped at about 450 KB.
+- JSON request body limit: 1 MB. Mongoose validators run on applicable updates.
+- Stock quantity must be a positive integer. Stock changes and history inserts use a transaction; stock-out cannot exceed available quantity.
+- Passwords use bcryptjs; normal user queries omit password. JWT signature, algorithm, expiry and claim shapes are checked.
+- CORS allows the deployed frontend, configured origins and local Vite origins outside production. CORS is not authentication.
+- Security headers disable `X-Powered-By` and set `nosniff`, frame-denial and referrer policy.
+- `.env` secrets must remain private; use HTTPS and a strong JWT secret in production.
 
-### Current Progress
+| Status | Meaning |
+|---|---|
+| `400` | Invalid JSON/input/ID/date/pagination or insufficient stock |
+| `401` | Missing, invalid or expired token |
+| `403` | Disallowed CORS origin or insufficient role |
+| `404` | Route/resource not found in the current organization |
+| `409` | Duplicate unique value |
+| `413` | Request body exceeds 1 MB |
+| `429` | Login/registration rate limit reached |
+| `500` | Unexpected server/database error |
 
-Middleware              ✅
-Logger Middleware       ✅
-User Model              ✅
-User Registration       ✅
-Password Hashing        ✅
-User Login              ✅
-JWT Authentication      ✅
-JWT Middleware          ✅
-Protected Routes        ✅
-Profile API             ✅
-Postman Testing         ✅
+## Current notes
 
-### Authentication Flow
-
-Register
-
-↓
-
-Password Hashing
-
-↓
-
-MongoDB
-
-↓
-
-Login
-
-↓
-
-JWT Token
-
-↓
-
-Authorization Header
-
-↓
-
-JWT Middleware
-
-↓
-
-Token Verification
-
-↓
-
-`req.user`
-
-↓
-
-Protected Controller
-
-↓
-User Data
-
-## Production configuration
-
-Set `MONGO_URI` and a strong `JWT_SECRET` in the deployment environment; keep `.env` local and untracked. Copy `.env.example` to configure the expected keys. The deployed frontend origin `https://inventorystack.netlify.app` is allowed by default. In production, set `CORS_ORIGINS` to a comma-separated list that adds any other exact frontend origins allowed to call this API. Local Vite origins are allowed only outside production. Login is limited to 10 attempts per IP per 15 minutes and registration to 5 requests per IP per hour. When deploying behind a reverse proxy, set `TRUST_PROXY_HOPS` to the exact number of trusted proxy hops so rate limits use the client IP; do not set it to `true`.
-
-Run backend checks with `npm test`. Database-backed API tests require MongoDB; included tests cover request validation and the public-registration organization boundary.
+- Automated `test/` files were removed in commit `d35acd1`; `package.json` still has an `npm test` script, but no project test files currently exist.
+- JavaScript `.test(...)` in validation code is a regular-expression string check, not the test suite.
+- Rate limits use the default in-memory store; use a shared store for multiple server instances.
+- No refresh-token/revocation flow, global API rate limit, image storage service, or automatic stock-history cleanup is configured.
+- Transactions require MongoDB Atlas or a replica set. Backups, monitoring, log retention and secret rotation must be configured for deployment.
