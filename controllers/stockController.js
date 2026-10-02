@@ -125,133 +125,199 @@ const StockHistory = require("../models/StockHistory");
 
 
   const getStockHistory = async (req, res) => {
-try {
+              try {
+              
+              const {
+                productId,
+                type,
+                startDate,
+                endDate,
+                search = "",
+                sort = "newest",
+                page = 1,
+                limit = 10
+              } = req.query;
+              
+              const pageNumber = Number(page);
+              const limitNumber = Number(limit);
+              
+              if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+                return res.status(400).json({
+                  message: "Page must be a positive integer"
+                });
+              }
+              
+              if (!Number.isInteger(limitNumber) || limitNumber < 1 || limitNumber > 100) {
+                return res.status(400).json({
+                  message: "Limit must be between 1 and 100"
+                });
+              }
+              
+              const filter = {
+                organizationId: req.user.organizationId
+              };
 
-const { productId,type,startDate, endDate, page = 1, limit = 10 } = req.query;
+              const sortOptions = {
+                newest: { createdAt: -1 },
+                oldest: { createdAt: 1 },
+                quantity_asc: { quantity: 1 },
+                quantity_desc: { quantity: -1 }
+              };
 
-const pageNumber = Number(page);
-const limitNumber = Number(limit);
+              if (!Object.hasOwn(sortOptions, sort)) {
+                return res.status(400).json({
+                  message: "Invalid stock history sort order"
+                });
+              }
+              
+              if (productId) {
+              
+                if (!mongoose.Types.ObjectId.isValid(productId)) {
+                  return res.status(400).json({
+                    message: "Invalid product ID"
+                  });
+                }
+              
+                filter.productId = productId;
+              }
 
-if (!Number.isInteger(pageNumber) || pageNumber < 1) {
-  return res.status(400).json({
-    message: "Page must be a positive integer"
-  });
-}
+              const searchTerm = String(search).trim();
+              if (searchTerm) {
+                const escapedSearch = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+                const matchingProducts = await Product.find({
+                  organizationId: req.user.organizationId,
+                  name: { $regex: escapedSearch, $options: "i" }
+                }).select("_id");
+                const matchingProductIds = matchingProducts.map((product) => product._id);
 
-if (!Number.isInteger(limitNumber) || limitNumber < 1 || limitNumber > 100) {
-  return res.status(400).json({
-    message: "Limit must be between 1 and 100"
-  });
-}
-
-const filter = {
-  organizationId: req.user.organizationId
-};
-
-if (productId) {
-
-  if (!mongoose.Types.ObjectId.isValid(productId)) {
-    return res.status(400).json({
-      message: "Invalid product ID"
-    });
-  }
-
-  filter.productId = productId;
-}
-
-
-if (type) {
-if (!["in", "out"].includes(type)) {
-return res.status(400).json({
-message: "Type must be either in or out"
-});
-}
-
-filter.type = type;
-}
-
-
-if (startDate || endDate) {
-
-filter.createdAt = {};
-
-if (startDate) {
-const start = new Date(startDate);
-
-if (isNaN(start.getTime())) {
-  return res.status(400).json({
-    message: "Invalid start date"
-  });
-}
-
-filter.createdAt.$gte = start;
-
-}
-
-if (endDate) {
-const end = new Date(endDate);
-
-if (isNaN(end.getTime())) {
-  return res.status(400).json({
-    message: "Invalid end date"
-  });
-}
-
-end.setHours(23, 59, 59, 999);
-
-filter.createdAt.$lte = end;
-
-}
-}
-
-const totalHistory = await StockHistory.countDocuments(filter);
-
-const skip = (pageNumber - 1) * limitNumber;
-
-const history = await StockHistory.find(filter)
-  .populate("productId", "name price category")
-  .populate("createdBy", "name email")
-  .sort({ createdAt: -1 })
-  .skip(skip)
-  .limit(limitNumber);
-
-const totalPages = Math.ceil(totalHistory / limitNumber);
-
-res.json({
-  message: "Stock history fetched successfully",
-  page: pageNumber,
-  limit: limitNumber,
-  totalHistory,
-  totalPages,
-  hasNextPage: pageNumber < totalPages,
-  hasPreviousPage: pageNumber > 1,
-  history
-});
-
-} catch (error) {
-res.status(500).json({
-message: "Failed to fetch stock history",
-error: error.message
-});
-}
-};
-
-
+                if (filter.productId) {
+                  filter.productId = matchingProductIds.some(
+                    (id) => id.toString() === filter.productId.toString()
+                  ) ? filter.productId : { $in: [] };
+                } else {
+                  filter.productId = { $in: matchingProductIds };
+                }
+              }
+              
+              
+              if (type) {
+              if (!["in", "out"].includes(type)) {
+              return res.status(400).json({
+              message: "Type must be either in or out"
+              });
+              }
+              
+              filter.type = type;
+              }
+              
+              
+              if (startDate || endDate) {
+              
+              filter.createdAt = {};
+              
+              if (startDate) {
+              const start = new Date(startDate);
+              
+              if (isNaN(start.getTime())) {
+                return res.status(400).json({
+                  message: "Invalid start date"
+                });
+              }
+              
+              filter.createdAt.$gte = start;
+              
+              }
+              
+              if (endDate) {
+              const end = new Date(endDate);
+              
+              if (isNaN(end.getTime())) {
+                return res.status(400).json({
+                  message: "Invalid end date"
+                });
+              }
+              
+              end.setHours(23, 59, 59, 999);
+              
+              filter.createdAt.$lte = end;
+              
+              }
+              }
+              
+              const totalHistory = await StockHistory.countDocuments(filter);
+              
+              const skip = (pageNumber - 1) * limitNumber;
+              
+              const history = await StockHistory.find(filter)
+                .populate("productId", "name price category")
+                .populate("createdBy", "name email")
+                .sort(sortOptions[sort])
+                .skip(skip)
+                .limit(limitNumber);
+              
+              const totalPages = Math.ceil(totalHistory / limitNumber);
+              
+              res.json({
+                message: "Stock history fetched successfully",
+                page: pageNumber,
+                limit: limitNumber,
+                totalHistory,
+                totalPages,
+                hasNextPage: pageNumber < totalPages,
+                hasPreviousPage: pageNumber > 1,
+                history
+              });
+              
+              } catch (error) {
+              res.status(500).json({
+              message: "Failed to fetch stock history",
+              error: error.message
+              });
+              }
+              };
+              
+              
 
 
 
 
 const getLowStock = async (req, res) => {
                try {
-               
-               const products = await Product.find({
+               const { page = 1, limit = 10 } = req.query;
+               const pageNumber = Number(page);
+               const limitNumber = Number(limit);
+
+               if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+                 return res.status(400).json({
+                   message: "Page must be a positive integer"
+                 });
+               }
+
+               if (!Number.isInteger(limitNumber) || limitNumber < 1 || limitNumber > 100) {
+                 return res.status(400).json({
+                   message: "Limit must be between 1 and 100"
+                 });
+               }
+
+               const filter = {
                  organizationId: req.user.organizationId,
                  quantity: { $gt: 0, $lte: 5 }
-               });
+               };
+               const count = await Product.countDocuments(filter);
+               const totalPages = Math.ceil(count / limitNumber);
+               const products = await Product.find(filter)
+                 .skip((pageNumber - 1) * limitNumber)
+                 .limit(limitNumber);
                
                res.json({
                  message: "Low stock products fetched successfully",
-                 count: products.length,
+                 count,
+                 page: pageNumber,
+                 limit: limitNumber,
+                 totalProducts: count,
+                 totalPages,
+                 hasNextPage: pageNumber < totalPages,
+                 hasPreviousPage: pageNumber > 1,
                  products
                });
                
@@ -267,15 +333,41 @@ const getLowStock = async (req, res) => {
 
 const getOutOfStock = async (req, res) => {
              try {
-             
-             const products = await Product.find({
+             const { page = 1, limit = 10 } = req.query;
+             const pageNumber = Number(page);
+             const limitNumber = Number(limit);
+
+             if (!Number.isInteger(pageNumber) || pageNumber < 1) {
+               return res.status(400).json({
+                 message: "Page must be a positive integer"
+               });
+             }
+
+             if (!Number.isInteger(limitNumber) || limitNumber < 1 || limitNumber > 100) {
+               return res.status(400).json({
+                 message: "Limit must be between 1 and 100"
+               });
+             }
+
+             const filter = {
                organizationId: req.user.organizationId,
                quantity: 0
-             });
+             };
+             const count = await Product.countDocuments(filter);
+             const totalPages = Math.ceil(count / limitNumber);
+             const products = await Product.find(filter)
+               .skip((pageNumber - 1) * limitNumber)
+               .limit(limitNumber);
              
              res.json({
                message: "Out of stock products fetched successfully",
-               count: products.length,
+               count,
+               page: pageNumber,
+               limit: limitNumber,
+               totalProducts: count,
+               totalPages,
+               hasNextPage: pageNumber < totalPages,
+               hasPreviousPage: pageNumber > 1,
                products
              });
              
@@ -292,81 +384,93 @@ const getOutOfStock = async (req, res) => {
 
 
 const getStockSummary = async (req, res) => {
-                 try {
-                 const { productId } = req.query;
-                 
-                 if (!productId) {
-                   return res.status(400).json({
-                     message: "Product ID is required"
-                   });
-                 }
-                 
-                 if (!mongoose.Types.ObjectId.isValid(productId)) {
-                   return res.status(400).json({
-                     message: "Invalid product ID"
-                   });
-                 }
-                 
-                 const product = await Product.findOne({
-                   _id: productId,
-                   organizationId: req.user.organizationId
-                 });
-                 
-                 if (!product) {
-                   return res.status(404).json({
-                     message: "Product not found"
-                   });
-                 }
-  //  Yahan aggregate() use hua hai.Normal find() se hum records nikal rahe theStockHistory.find(...Lekin yahan hume multiple history records ko calculate karke total chahiye:
-                 const summary = await StockHistory.aggregate([
-                   {
-                     $match: {
-                       productId: product._id,
-                       organizationId: req.user.organizationId
-                     }
-                   },
-                   {
-                     $group: {
-                       _id: "$productId",
-                       totalStockIn: {
-                         $sum: {
-                           $cond: [{ $eq: ["$type", "in"] }, "$quantity", 0]
-                         }
-                       },
-                       totalStockOut: {
-                         $sum: {
-                           $cond: [{ $eq: ["$type", "out"] }, "$quantity", 0]
-                         }
-                       }
-                     }
-                   }
-                 ]);
-                 
-                 const stockData = summary[0] || {
-                   totalStockIn: 0,
-                   totalStockOut: 0
-                 };
-                 
-                 res.json({
-                   message: "Stock summary fetched successfully",
-                   product: {
-                     id: product._id,
-                     name: product.name,
-                     currentStock: product.quantity
-                   },
-                   summary: {
-                     totalStockIn: stockData.totalStockIn,
-                     totalStockOut: stockData.totalStockOut
-                   }
-                 });
-                 
-                 } catch (error) {
-                 res.status(500).json({
-                 message: "Failed to fetch stock summary",
-                 error: error.message
-                 });
-                 }
-                 };
+try {
+const { productId } = req.query;
+
+if (!productId) {
+  return res.status(400).json({
+    message: "Product ID is required"
+  });
+}
+
+if (!mongoose.Types.ObjectId.isValid(productId)) {
+  return res.status(400).json({
+    message: "Invalid product ID"
+  });
+}
+
+const product = await Product.findOne({
+  _id: productId,
+  organizationId: req.user.organizationId
+});
+
+if (!product) {
+  return res.status(404).json({
+    message: "Product not found"
+  });
+}
+
+const summary = await StockHistory.aggregate([
+  {
+    $match: {
+      productId: product._id,
+      organizationId: new mongoose.Types.ObjectId(req.user.organizationId)
+    }
+  },
+  {
+    $group: {
+      _id: "$productId",
+
+      totalStockIn: {
+        $sum: {
+          $cond: [
+            { $eq: ["$type", "in"] },
+            "$quantity",
+            0
+          ]
+        }
+      },
+
+      totalStockOut: {
+        $sum: {
+          $cond: [
+            { $eq: ["$type", "out"] },
+            "$quantity",
+            0
+          ]
+        }
+      }
+    }
+  }
+]);
+
+const stockData = summary[0] || {
+  totalStockIn: 0,
+  totalStockOut: 0
+};
+
+res.status(200).json({
+  message: "Stock summary fetched successfully",
+
+  product: {
+    id: product._id,
+    name: product.name,
+    currentStock: product.quantity
+  },
+
+  summary: {
+    totalStockIn: stockData.totalStockIn,
+    totalStockOut: stockData.totalStockOut
+  }
+});
+
+} catch (error) {
+res.status(500).json({
+message: "Failed to fetch stock summary",
+error: error.message
+});
+}
+};
                  
 
 
