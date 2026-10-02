@@ -22,11 +22,13 @@ const developmentOrigins = [
   "http://localhost:4173",
   "http://127.0.0.1:4173"
 ];
+const applicationOrigins = ["https://inventorystack.netlify.app"];
 const configuredOrigins = (process.env.CORS_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 const allowedOrigins = new Set([
+  ...applicationOrigins,
   ...configuredOrigins,
   ...(process.env.NODE_ENV === "production" ? [] : developmentOrigins)
 ]);

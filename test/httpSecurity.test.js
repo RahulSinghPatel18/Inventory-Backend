@@ -27,6 +27,38 @@ test("HTTP layer applies security headers, CORS policy, auth, and clean errors",
       "http://localhost:5173"
     );
 
+    const deployedPreflight = await fetch(`${base}/users/Login`, {
+      method: "OPTIONS",
+      headers: {
+        Origin: "https://inventorystack.netlify.app",
+        "Access-Control-Request-Method": "POST",
+        "Access-Control-Request-Headers": "content-type"
+      }
+    });
+    assert.equal(deployedPreflight.status, 204);
+    assert.equal(
+      deployedPreflight.headers.get("access-control-allow-origin"),
+      "https://inventorystack.netlify.app"
+    );
+    assert.match(
+      deployedPreflight.headers.get("access-control-allow-methods"),
+      /POST/
+    );
+
+    const deployedLogin = await fetch(`${base}/users/Login`, {
+      method: "POST",
+      headers: {
+        Origin: "https://inventorystack.netlify.app",
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({})
+    });
+    assert.equal(deployedLogin.status, 400);
+    assert.equal(
+      deployedLogin.headers.get("access-control-allow-origin"),
+      "https://inventorystack.netlify.app"
+    );
+
     const unauthorized = await allowed.json();
     assert.equal(unauthorized.error, undefined);
     assert.equal(unauthorized.stack, undefined);

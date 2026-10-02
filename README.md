@@ -211,6 +211,6 @@ User Data
 
 ## Production configuration
 
-Set `MONGO_URI` and a strong `JWT_SECRET` in the deployment environment; keep `.env` local and untracked. Copy `.env.example` to configure the expected keys. In production, set `CORS_ORIGINS` to a comma-separated list of the exact frontend origins allowed to call this API. Local Vite origins are allowed only outside production. Login is limited to 10 attempts per IP per 15 minutes and registration to 5 requests per IP per hour. When deploying behind a reverse proxy, set `TRUST_PROXY_HOPS` to the exact number of trusted proxy hops so rate limits use the client IP; do not set it to `true`.
+Set `MONGO_URI` and a strong `JWT_SECRET` in the deployment environment; keep `.env` local and untracked. Copy `.env.example` to configure the expected keys. The deployed frontend origin `https://inventorystack.netlify.app` is allowed by default. In production, set `CORS_ORIGINS` to a comma-separated list that adds any other exact frontend origins allowed to call this API. Local Vite origins are allowed only outside production. Login is limited to 10 attempts per IP per 15 minutes and registration to 5 requests per IP per hour. When deploying behind a reverse proxy, set `TRUST_PROXY_HOPS` to the exact number of trusted proxy hops so rate limits use the client IP; do not set it to `true`.
 
 Run backend checks with `npm test`. Database-backed API tests require MongoDB; included tests cover request validation and the public-registration organization boundary.
