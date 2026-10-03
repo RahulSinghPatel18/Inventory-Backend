@@ -195,6 +195,7 @@ const getStockHistory = async (req, res) => {
         .sort(sortOptions[sort])
         .skip(pagination.skip)
         .limit(pagination.limit)
+        .lean()
     ]);
     const totalPages = Math.ceil(totalHistory / pagination.limit);
     return res.json({
@@ -227,7 +228,7 @@ const getPaginatedStockProducts = async (req, res, quantityFilter, message) => {
     };
     const [count, products] = await Promise.all([
       Product.countDocuments(filter),
-      Product.find(filter).skip(pagination.skip).limit(pagination.limit)
+      Product.find(filter).skip(pagination.skip).limit(pagination.limit).lean()
     ]);
     const totalPages = Math.ceil(count / pagination.limit);
     return res.json({
@@ -269,33 +270,40 @@ const getStockSummary = async (req, res) => {
       });
     }
 
-    const product = await Product.findOne({
-      _id: productId,
-      organizationId: req.user.organizationId
-    });
+    const productObjectId = new mongoose.Types.ObjectId(productId);
+    const organizationObjectId = new mongoose.Types.ObjectId(req.user.organizationId);
+    const [productResult, stockDataResult] = await Promise.allSettled([
+      Product.findOne({
+        _id: productId,
+        organizationId: req.user.organizationId
+      }).select("name quantity").lean(),
+      StockHistory.aggregate([
+        {
+          $match: {
+            productId: productObjectId,
+            organizationId: organizationObjectId
+          }
+        },
+        {
+          $group: {
+            _id: "$productId",
+            totalStockIn: {
+              $sum: { $cond: [{ $eq: ["$type", "in"] }, "$quantity", 0] }
+            },
+            totalStockOut: {
+              $sum: { $cond: [{ $eq: ["$type", "out"] }, "$quantity", 0] }
+            }
+          }
+        }
+      ])
+    ]);
+    if (productResult.status === "rejected") throw productResult.reason;
+    const product = productResult.value;
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
     }
-
-    const [stockData] = await StockHistory.aggregate([
-      {
-        $match: {
-          productId: product._id,
-          organizationId: new mongoose.Types.ObjectId(req.user.organizationId)
-        }
-      },
-      {
-        $group: {
-          _id: "$productId",
-          totalStockIn: {
-            $sum: { $cond: [{ $eq: ["$type", "in"] }, "$quantity", 0] }
-          },
-          totalStockOut: {
-            $sum: { $cond: [{ $eq: ["$type", "out"] }, "$quantity", 0] }
-          }
-        }
-      }
-    ]);
+    if (stockDataResult.status === "rejected") throw stockDataResult.reason;
+    const [stockData] = stockDataResult.value;
 
     return res.status(200).json({
       message: "Stock summary fetched successfully",

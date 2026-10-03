@@ -46,6 +46,7 @@ const getCategories = async (req, res) => {
         .skip(pagination.skip)
         .limit(pagination.limit)
         .populate("createdBy", "name email")
+        .lean()
     ]);
     const totalPages = Math.ceil(totalCategories / pagination.limit);
     return res.json({
@@ -134,7 +135,7 @@ const getCategoryById = async (req, res) => {
     const category = await Category.findOne({
       _id: req.params.id,
       organizationId: req.user.organizationId
-    }).populate("createdBy", "name email");
+    }).populate("createdBy", "name email").lean();
     if (!category) {
       return res.status(404).json({ message: "Category not found" });
     }
@@ -188,48 +189,50 @@ const getCategoryStats = async (req, res) => {
           foreignField: "category",
           pipeline: [
             { $match: { organizationId } },
-            { $project: { price: 1, quantity: 1 } }
+            {
+              $group: {
+                _id: null,
+                totalProducts: { $sum: 1 },
+                totalStock: { $sum: "$quantity" },
+                totalInventoryValue: {
+                  $sum: { $multiply: ["$price", "$quantity"] }
+                },
+                lowStockProducts: {
+                  $sum: {
+                    $cond: [
+                      { $and: [{ $gt: ["$quantity", 0] }, { $lte: ["$quantity", 5] }] },
+                      1,
+                      0
+                    ]
+                  }
+                },
+                outOfStockProducts: {
+                  $sum: { $cond: [{ $eq: ["$quantity", 0] }, 1, 0] }
+                }
+              }
+            }
           ],
-          as: "products"
+          as: "productStats"
         }
       },
       {
         $project: {
           _id: 1,
           categoryName: "$name",
-          totalProducts: { $size: "$products" },
-          totalStock: { $sum: "$products.quantity" },
+          totalProducts: {
+            $ifNull: [{ $arrayElemAt: ["$productStats.totalProducts", 0] }, 0]
+          },
+          totalStock: {
+            $ifNull: [{ $arrayElemAt: ["$productStats.totalStock", 0] }, 0]
+          },
           totalInventoryValue: {
-            $sum: {
-              $map: {
-                input: "$products",
-                as: "product",
-                in: { $multiply: ["$$product.price", "$$product.quantity"] }
-              }
-            }
+            $ifNull: [{ $arrayElemAt: ["$productStats.totalInventoryValue", 0] }, 0]
           },
           lowStockProducts: {
-            $size: {
-              $filter: {
-                input: "$products",
-                as: "product",
-                cond: {
-                  $and: [
-                    { $gt: ["$$product.quantity", 0] },
-                    { $lte: ["$$product.quantity", 5] }
-                  ]
-                }
-              }
-            }
+            $ifNull: [{ $arrayElemAt: ["$productStats.lowStockProducts", 0] }, 0]
           },
           outOfStockProducts: {
-            $size: {
-              $filter: {
-                input: "$products",
-                as: "product",
-                cond: { $eq: ["$$product.quantity", 0] }
-              }
-            }
+            $ifNull: [{ $arrayElemAt: ["$productStats.outOfStockProducts", 0] }, 0]
           }
         }
       }

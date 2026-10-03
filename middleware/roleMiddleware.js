@@ -3,7 +3,9 @@ const User = require("../models/User");
 const adminMiddleware = async (req, res, next) => {
   try {
 
-    const user = await User.findById(req.user.userId).select("role organizationId");
+    const user = await User.findById(req.user.userId)
+      .select("role organizationId")
+      .lean();
 
     if (!user || String(user.organizationId) !== String(req.user.organizationId)) {
       return res.status(401).json({

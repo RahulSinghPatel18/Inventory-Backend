@@ -28,11 +28,16 @@ const registerUser = async (req, res) => {
     const cleanName = name.trim();
     const cleanEmail = email.trim();
     const cleanOrganizationName = organizationName.trim();
-    if (await User.exists({ email: cleanEmail })) {
+    const [existingUser, existingOrganization] = await Promise.all([
+      User.exists({ email: cleanEmail }),
+      Organization.exists({ name: cleanOrganizationName })
+    ]);
+
+    if (existingUser) {
       return res.status(400).json({ message: "User already exists" });
     }
 
-    if (await Organization.exists({ name: cleanOrganizationName })) {
+    if (existingOrganization) {
       return res.status(409).json({
         message: "Organization already exists. Ask its administrator to invite you."
       });
@@ -89,6 +94,9 @@ const loginUser = async (req, res) => {
       });
     }
 
+    const organization = await Organization.findById(user.organizationId)
+      .select("name")
+      .lean();
     const token = jwt.sign({
       userId: user._id,
       role: user.role,
@@ -100,7 +108,16 @@ const loginUser = async (req, res) => {
 
     return res.json({
       message: "Login successful",
-      token
+      token,
+      user: {
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        organizationId: user.organizationId,
+        organizationName: organization?.name || "",
+        role: user.role,
+        profileImage: user.profileImage
+      }
     });
   } catch (error) {
     return handleControllerError(res, error, "Login failed");

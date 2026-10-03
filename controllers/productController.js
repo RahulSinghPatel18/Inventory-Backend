@@ -104,6 +104,7 @@ const getProducts = async (req, res) => {
         .limit(pagination.limit)
         .populate("category", "name")
         .populate("createdBy", "name email role")
+        .lean()
     ]);
     const totalPages = Math.ceil(totalProducts / pagination.limit);
     return res.json({
@@ -130,7 +131,7 @@ const getProductById = async (req, res) => {
     const product = await Product.findOne({
       _id: req.params.id,
       organizationId: req.user.organizationId
-    }).populate("createdBy", "name email role");
+    }).populate("createdBy", "name email role").lean();
 
     if (!product) {
       return res.status(404).json({ message: "Product not found" });
