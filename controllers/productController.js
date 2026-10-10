@@ -242,11 +242,9 @@ const updateProduct = async (req, res) => {
       update.price = value;
     }
     if (quantity !== undefined) {
-      const value = parseQuantity(quantity);
-      if (value === null) {
-        return res.status(400).json({ message: "Quantity must be a whole number of 0 or more" });
-      }
-      update.quantity = value;
+      return res.status(400).json({
+        message: "Product quantity cannot be edited here. Use the authorized stock in/out action."
+      });
     }
     if (category !== undefined) {
       if (!isValidObjectId(category)) {

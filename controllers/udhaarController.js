@@ -9,6 +9,7 @@ const handleControllerError = require("../utils/controllerError");
 const { isValidObjectId, parsePagination } = require("../utils/requestValidation");
 const { parseMoneyCents, parseQuantity, formatMoney, parseSaleUnitPriceCents } = require("../utils/salesValidation");
 const moveStock = require("../utils/stockMovement");
+const notificationHub = require("../utils/notificationHub");
 const attachProductImages = require("../utils/productImages");
 
 const adminRoles = new Set(["admin", "Admin"]);
@@ -433,8 +434,10 @@ const createUdhaar = async (req, res) => {
 
     const session = await mongoose.startSession();
     let udhaar;
+    let stockNotifications = [];
     try {
       await session.withTransaction(async () => {
+        stockNotifications = [];
         const [created] = await Udhaar.create([{
           customerId,
           items: udhaarItems,
@@ -446,10 +449,10 @@ const createUdhaar = async (req, res) => {
           createdBy: userId(req)
         }], { session });
         if (udhaarItems.length) {
-          await moveStock({
+          stockNotifications.push(...await moveStock({
             items: udhaarItems, type: "out", organizationId: organizationId(req),
             userId: userId(req), session, sourceType: "udhaar", sourceId: created._id
-          });
+          }));
         }
         if (paidCents > 0) {
           await Payment.create([{
@@ -462,6 +465,9 @@ const createUdhaar = async (req, res) => {
       }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
     } finally {
       await session.endSession();
+    }
+    for (const stockNotification of stockNotifications) {
+      notificationHub.publish(stockNotification.toObject());
     }
     return res.status(201).json({ message: "Udhaar recorded", udhaar });
   } catch (error) {
@@ -484,8 +490,10 @@ const updateUdhaar = async (req, res) => {
 
     const session = await mongoose.startSession();
     let udhaar;
+    let stockNotifications = [];
     try {
       await session.withTransaction(async () => {
+        stockNotifications = [];
         udhaar = await Udhaar.findOne({
           _id: req.params.id,
           organizationId: organizationId(req)
@@ -550,10 +558,10 @@ const cancelUdhaar = async (req, res) => {
           throw Object.assign(new Error("Udhaar with payment history cannot be cancelled"), { status: 409 });
         }
         if (udhaar.items.length) {
-          await moveStock({
+          stockNotifications.push(...await moveStock({
             items: udhaar.items, type: "in", organizationId: organizationId(req),
             userId: userId(req), session, sourceType: "udhaar", sourceId: udhaar._id
-          });
+          }));
         }
         udhaar.status = "cancelled";
         udhaar.cancelledAt = new Date();
@@ -562,6 +570,9 @@ const cancelUdhaar = async (req, res) => {
       }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
     } finally {
       await session.endSession();
+    }
+    for (const stockNotification of stockNotifications) {
+      notificationHub.publish(stockNotification.toObject());
     }
     return res.json({ message: "Udhaar cancelled and inventory restored", udhaar });
   } catch (error) {

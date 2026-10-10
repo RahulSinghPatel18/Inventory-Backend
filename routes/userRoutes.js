@@ -4,6 +4,7 @@ const {
   verifyRegistrationOtp,
   resendRegistrationOtp,
   loginUser,
+  resendTwoFactor,
   googleLogin,
   registerGoogleOrganization,
   verifyTwoFactor,
@@ -41,6 +42,7 @@ router.post("/Register", registerRateLimit, registerUser);
 router.post("/VerifyRegistrationOtp", verifyOtpRateLimit, verifyRegistrationOtp);
 router.post("/ResendRegistrationOtp", sendOtpRateLimit, resendRegistrationOtp);
 router.post("/Login", loginRateLimit, loginUser);
+router.post("/ResendTwoFactor", sendOtpRateLimit, resendTwoFactor);
 router.post("/Google", loginRateLimit, googleLogin);
 router.post("/Google/Register", registerRateLimit, registerGoogleOrganization);
 router.post("/VerifyTwoFactor", verifyOtpRateLimit, verifyTwoFactor);

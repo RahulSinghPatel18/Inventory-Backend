@@ -2,12 +2,14 @@ const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const Sale = require("../models/Sale");
 const Payment = require("../models/Payment");
+const Notification = require("../models/Notification");
 const Organization = require("../models/Organization");
 const User = require("../models/User");
 const handleControllerError = require("../utils/controllerError");
 const { isValidObjectId, parsePagination } = require("../utils/requestValidation");
 const { parseMoneyCents, parseQuantity, formatMoney, parseSaleUnitPriceCents } = require("../utils/salesValidation");
 const moveStock = require("../utils/stockMovement");
+const notificationHub = require("../utils/notificationHub");
 const attachProductImages = require("../utils/productImages");
 
 const organizationId = (req) => req.user.organizationId;
@@ -81,8 +83,11 @@ const requestSale = async (req, res) => {
 
     const session = await mongoose.startSession();
     let sale;
+    let notification;
+    let stockNotifications = [];
     try {
       await session.withTransaction(async () => {
+        stockNotifications = [];
         const [created] = await Sale.create([{
           items: saleItems,
           totalCents,
@@ -92,10 +97,10 @@ const requestSale = async (req, res) => {
           organizationId: organizationId(req),
           createdBy: userId(req)
         }], { session });
-        await moveStock({
+        stockNotifications.push(...await moveStock({
           items: saleItems, type: "out", organizationId: organizationId(req),
           userId: userId(req), session, sourceType: "sale", sourceId: created._id
-        });
+        }));
         await Payment.create([{
           saleId: created._id,
           amountCents: paidCents,
@@ -104,10 +109,23 @@ const requestSale = async (req, res) => {
           organizationId: organizationId(req),
           createdBy: userId(req)
         }], { session });
+        [notification] = await Notification.create([{
+          organizationId: organizationId(req),
+          createdBy: userId(req),
+          type: "sale-created",
+          title: "Sale recorded",
+          message: `A sale of ${formatMoney(totalCents)} was recorded.`,
+          entityType: "sale",
+          entityId: created._id
+        }], { session });
         sale = created;
       }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
     } finally {
       await session.endSession();
+    }
+    notificationHub.publish(notification.toObject());
+    for (const stockNotification of stockNotifications) {
+      notificationHub.publish(stockNotification.toObject());
     }
     return res.status(201).json({ message: "Sale recorded and stock updated", sale });
   } catch (error) {
@@ -249,8 +267,10 @@ const cancelSale = async (req, res) => {
     if (!isValidObjectId(req.params.id)) return res.status(400).json({ message: "Invalid sale ID" });
     const session = await mongoose.startSession();
     let cancelledSale;
+    let stockNotifications = [];
     try {
       await session.withTransaction(async () => {
+        stockNotifications = [];
         const sale = await Sale.findOne({
           _id: req.params.id, ...normalSalesFilter(organizationId(req))
         }).session(session);
@@ -260,11 +280,11 @@ const cancelSale = async (req, res) => {
           throw Object.assign(new Error("Paid sales cannot be cancelled; process a refund separately"), { status: 409 });
         }
         for (const item of sale.items) {
-          await moveStock({
+          stockNotifications.push(...await moveStock({
             items: [{ productId: item.productId, quantity: item.quantity }],
             type: "in", organizationId: organizationId(req), userId: userId(req), session,
             sourceType: "sale", sourceId: sale._id
-          });
+          }));
         }
         sale.status = "cancelled";
         sale.cancelledAt = new Date();
@@ -274,6 +294,9 @@ const cancelSale = async (req, res) => {
       }, { readConcern: { level: "snapshot" }, writeConcern: { w: "majority" } });
     } finally {
       await session.endSession();
+    }
+    for (const stockNotification of stockNotifications) {
+      notificationHub.publish(stockNotification.toObject());
     }
     return res.json({ message: "Sale cancelled and inventory restored", sale: cancelledSale });
   } catch (error) {

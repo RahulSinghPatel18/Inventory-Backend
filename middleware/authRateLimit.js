@@ -12,39 +12,39 @@ res.status(options.statusCode).json(options.message);
 });
 
 const loginRateLimit = createLimiter(
-2 * 60 * 1000,
-100,
-"Too many login attempts. Please try again in 2 minute."
+15 * 60 * 1000,
+10,
+"Too many sign-in attempts. Please try again in 15 minutes."
 );
 
 const registerRateLimit = createLimiter(
-5 * 60 * 1000,
-100,
-"Too many signup attempts. Please try again in 5 minutes."
+60 * 60 * 1000,
+5,
+"Too many registration attempts. Please try again in 1 hour."
 );
 
 const forgotPasswordRateLimit = createLimiter(
-5 * 60 * 1000,
-100,
-"Too many password reset requests. Please try again in 5 minutes."
+60 * 60 * 1000,
+5,
+"Too many password reset requests. Please try again in 1 hour."
 );
 
 const resetPasswordRateLimit = createLimiter(
-2 * 60 * 1000,
-100,
-"Too many password reset attempts. Please try again in 2 minute."
+15 * 60 * 1000,
+10,
+"Too many password reset attempts. Please try again in 15 minutes."
 );
 
 const sendOtpRateLimit = createLimiter(
-5 * 60 * 1000,
-100,
-"Too many verification code requests. Please try again in 5 minutes."
+15 * 60 * 1000,
+10,
+"Too many verification code requests. Please try again in 15 minutes."
 );
 
 const verifyOtpRateLimit = createLimiter(
-2 * 60 * 1000,
-100,
-"Too many verification attempts. Please try again in 2 minute."
+15 * 60 * 1000,
+10,
+"Too many verification attempts. Please try again in 15 minutes."
 );
 
 module.exports = {

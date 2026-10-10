@@ -12,6 +12,7 @@ const Customer = require("../models/Customer");
 const Sale = require("../models/Sale");
 const Udhaar = require("../models/Udhaar");
 const Payment = require("../models/Payment");
+const Notification = require("../models/Notification");
 const handleControllerError = require("../utils/controllerError");
 const { sendOtpEmail } = require("../utils/emailService");
 const { PERMISSION_SET, DEFAULT_MEMBER_PERMISSIONS } = require("../utils/permissions");
@@ -71,6 +72,10 @@ const isTwoFactorEnabled = (user) => (
 );
 const escapeRegex = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const passwordResetMessage = "If the email is registered, a verification code will be sent.";
+const emailFilter = (email) => ({
+  $regex: `^${escapeRegex(email.trim())}$`,
+  $options: "i"
+});
 
 const createLoginUser = (user, organization) => ({
   _id: user._id,
@@ -82,6 +87,7 @@ const createLoginUser = (user, organization) => ({
   permissions: Array.isArray(user.permissions) ? user.permissions : DEFAULT_MEMBER_PERMISSIONS,
   profileImage: user.profileImage,
   mustChangePassword: user.mustChangePassword,
+  hasPassword: Boolean(user.password),
   twoFactorEnabled: isTwoFactorEnabled(user)
 });
 
@@ -96,71 +102,72 @@ const createSessionResponse = async (user, res, message) => {
   });
 };
 
-const sendAuthenticatedSession = async (user, res, message) => {
-  if (isTwoFactorEnabled(user)) {
-    const otp = createOtp();
-    const otpHash = hashOtp(otp);
-    const sentAt = new Date();
-    const expiresAt = new Date(sentAt.getTime() + OTP_TTL_MS);
-    const update = await User.updateOne(
-      {
-        _id: user._id,
-        $or: [
-          { twoFactorOtpSentAt: { $exists: false } },
-          { twoFactorOtpSentAt: { $lte: new Date(sentAt.getTime() - OTP_RESEND_COOLDOWN_MS) } }
-        ]
-      },
-      {
-        $set: {
-          twoFactorOtpHash: otpHash,
-          twoFactorOtpExpiresAt: expiresAt,
-          twoFactorOtpAttempts: 0,
-          twoFactorOtpSentAt: sentAt
-        }
+const sendTwoFactorChallenge = async (user, res) => {
+  const otp = createOtp();
+  const otpHash = hashOtp(otp);
+  const sentAt = new Date();
+  const expiresAt = new Date(sentAt.getTime() + OTP_TTL_MS);
+  const update = await User.updateOne(
+    {
+      _id: user._id,
+      $or: [
+        { twoFactorOtpSentAt: { $exists: false } },
+        { twoFactorOtpSentAt: { $lte: new Date(sentAt.getTime() - OTP_RESEND_COOLDOWN_MS) } }
+      ]
+    },
+    {
+      $set: {
+        twoFactorOtpHash: otpHash,
+        twoFactorOtpExpiresAt: expiresAt,
+        twoFactorOtpAttempts: 0,
+        twoFactorOtpSentAt: sentAt
       }
-    );
-    if (!update.modifiedCount) {
-      return res.status(429).json({
-        message: "Please wait before requesting another sign-in code."
-      });
     }
-
-    try {
-      await sendOtpEmail(user.email, otp, "twoFactor");
-    } catch (error) {
-      await User.updateOne(
-        { _id: user._id, twoFactorOtpHash: otpHash },
-        {
-          $unset: {
-            twoFactorOtpHash: 1,
-            twoFactorOtpExpiresAt: 1,
-            twoFactorOtpAttempts: 1,
-            twoFactorOtpSentAt: 1
-          }
-        }
-      );
-      console.error(`Two-factor email delivery failed (${error.name || "Error"})`);
-      return res.status(503).json({ message: "A verification code could not be sent. Please try again." });
-    }
-
-    return res.json({
-      message: "Verification code sent",
-      requiresTwoFactor: true,
-      challengeToken: jwt.sign(
-        { userId: user._id, purpose: "twoFactor" },
-        process.env.JWT_SECRET,
-        { expiresIn: "10m", algorithm: "HS256" }
-      )
+  );
+  if (!update.modifiedCount) {
+    return res.status(429).json({
+      message: "Please wait before requesting another sign-in code."
     });
   }
 
+  try {
+    await sendOtpEmail(user.email, otp, "twoFactor");
+  } catch (error) {
+    await User.updateOne(
+      { _id: user._id, twoFactorOtpHash: otpHash },
+      {
+        $unset: {
+          twoFactorOtpHash: 1,
+          twoFactorOtpExpiresAt: 1,
+          twoFactorOtpAttempts: 1,
+          twoFactorOtpSentAt: 1
+        }
+      }
+    );
+    console.error(`Two-factor email delivery failed (${error.name || "Error"})`);
+    return res.status(503).json({ message: "A verification code could not be sent. Please try again." });
+  }
+
+  return res.json({
+    message: "Verification code sent",
+    requiresTwoFactor: true,
+    challengeToken: jwt.sign(
+      { userId: user._id, authVersion: user.authVersion || 0, purpose: "twoFactor" },
+      process.env.JWT_SECRET,
+      { expiresIn: "10m", algorithm: "HS256" }
+    )
+  });
+};
+
+const sendAuthenticatedSession = async (user, res, message) => {
+  if (isTwoFactorEnabled(user)) return sendTwoFactorChallenge(user, res);
   return createSessionResponse(user, res, message);
 };
 
 const incrementOtpAttempts = (email, attemptsField, otpHashField, expiresField) => (
   User.findOneAndUpdate(
     {
-      email,
+      email: emailFilter(email),
       [otpHashField]: { $exists: true },
       [expiresField]: { $gt: new Date() },
       [attemptsField]: { $lt: OTP_MAX_ATTEMPTS }
@@ -300,6 +307,7 @@ const createOrganizationUser = async (req, res) => {
 };
 
 const registerUser = async (req, res) => {
+  let registrationReservation;
   try {
     const { name, email, password, organizationName } = req.body || {};
     if (
@@ -340,6 +348,13 @@ const registerUser = async (req, res) => {
       return res.status(503).json({ message: "Registration verification is temporarily unavailable. Try again later." });
     }
 
+    registrationReservation = {
+      email: cleanEmail,
+      sending: true,
+      verifying: false,
+      registrationExpiresAt: Date.now() + REGISTRATION_TTL_MS
+    };
+    pendingRegistrations.set(cleanEmail, registrationReservation);
     const otp = createOtp();
     const registration = {
       name: cleanName,
@@ -355,6 +370,7 @@ const registerUser = async (req, res) => {
       verifying: false
     };
     pendingRegistrations.set(cleanEmail, registration);
+    registrationReservation = registration;
     try {
       await sendOtpEmail(cleanEmail, otp, "registration");
     } catch (error) {
@@ -373,6 +389,12 @@ const registerUser = async (req, res) => {
       emailVerificationRequired: true
     });
   } catch (error) {
+    if (registrationReservation) {
+      const email = registrationReservation.email;
+      if (email && pendingRegistrations.get(email) === registrationReservation) {
+        pendingRegistrations.delete(email);
+      }
+    }
     return handleControllerError(res, error, "Registration failed");
   }
 };
@@ -456,6 +478,7 @@ const verifyRegistrationOtp = async (req, res) => {
       permissions: user.permissions || [],
       profileImage: user.profileImage,
       mustChangePassword: user.mustChangePassword,
+      hasPassword: true,
       twoFactorEnabled: isTwoFactorEnabled(user)
     }
   });
@@ -529,6 +552,43 @@ const loginUser = async (req, res) => {
   }
 };
 
+const resendTwoFactor = async (req, res) => {
+  const { challengeToken } = req.body || {};
+  if (typeof challengeToken !== "string" || !challengeToken) {
+    return res.status(400).json({ message: "A valid sign-in verification session is required" });
+  }
+
+  try {
+    const challenge = jwt.verify(challengeToken, process.env.JWT_SECRET, {
+      algorithms: ["HS256"]
+    });
+    if (challenge.purpose !== "twoFactor" || !isValidObjectId(challenge.userId)) {
+      return res.status(401).json({ message: "Verification session is invalid or expired" });
+    }
+
+    const challengeAuthVersion = Number.isSafeInteger(challenge.authVersion) ? challenge.authVersion : 0;
+    const user = await User.findOne({
+      _id: challenge.userId,
+      isActive: { $ne: false },
+      $or: [
+        { authVersion: challengeAuthVersion },
+        ...(challengeAuthVersion === 0 ? [{ authVersion: { $exists: false } }] : [])
+      ],
+      twoFactorOtpHash: { $exists: true }
+    }).select("+authVersion");
+    if (!user || !isTwoFactorEnabled(user)) {
+      return res.status(401).json({ message: "Verification session is invalid or expired. Sign in again." });
+    }
+
+    return await sendTwoFactorChallenge(user, res);
+  } catch (error) {
+    if (error.name === "JsonWebTokenError" || error.name === "TokenExpiredError") {
+      return res.status(401).json({ message: "Verification session is invalid or expired" });
+    }
+    return handleControllerError(res, error, "Failed to resend sign-in verification code");
+  }
+};
+
 const googleLogin = async (req, res) => {
   try {
     const { credential } = req.body || {};
@@ -560,11 +620,11 @@ const googleLogin = async (req, res) => {
 
     const email = payload.email.trim().toLowerCase();
     let user = await User.findOne({ googleId: payload.sub })
-      .select("+googleId +authVersion");
+      .select("+googleId +authVersion +password");
     if (!user) {
       user = await User.findOne({
         email: { $regex: `^${escapeRegex(email)}$`, $options: "i" }
-      }).select("+googleId +authVersion");
+      }).select("+googleId +authVersion +password");
     }
 
     if (!user) {
@@ -596,7 +656,7 @@ const googleLogin = async (req, res) => {
         { _id: user._id, $or: [{ googleId: { $exists: false } }, { googleId: payload.sub }] },
         { $set: { googleId: payload.sub, emailVerified: true } },
         { returnDocument: "after" }
-      ).select("+googleId +authVersion");
+      ).select("+googleId +authVersion +password");
       if (!user) {
         return res.status(409).json({ message: "This Google account could not be linked." });
       }
@@ -642,11 +702,11 @@ const registerGoogleOrganization = async (req, res) => {
     const email = identity.email.trim().toLowerCase();
     const findExistingAccount = async () => {
       let existing = await User.findOne({ googleId: identity.googleId })
-        .select("+googleId +authVersion");
+        .select("+googleId +authVersion +password");
       if (!existing) {
         existing = await User.findOne({
           email: { $regex: `^${escapeRegex(email)}$`, $options: "i" }
-        }).select("+googleId +authVersion");
+        }).select("+googleId +authVersion +password");
       }
       return existing;
     };
@@ -664,7 +724,7 @@ const registerGoogleOrganization = async (req, res) => {
           { _id: user._id, $or: [{ googleId: { $exists: false } }, { googleId: identity.googleId }] },
           { $set: { googleId: identity.googleId, emailVerified: true } },
           { returnDocument: "after" }
-        ).select("+googleId +authVersion");
+        ).select("+googleId +authVersion +password");
       }
       if (!user) {
         return res.status(409).json({ message: "This Google account could not be linked." });
@@ -699,7 +759,7 @@ const registerGoogleOrganization = async (req, res) => {
             { _id: existing._id, $or: [{ googleId: { $exists: false } }, { googleId: identity.googleId }] },
             { $set: { googleId: identity.googleId, emailVerified: true } },
             { returnDocument: "after" }
-          ).select("+googleId +authVersion");
+          ).select("+googleId +authVersion +password");
           if (linkedUser) {
             return await createSessionResponse(linkedUser, res, "Google sign-in successful");
           }
@@ -739,12 +799,17 @@ const verifyTwoFactor = async (req, res) => {
     if (challenge.purpose !== "twoFactor" || !isValidObjectId(challenge.userId)) {
       return res.status(401).json({ message: "Verification session is invalid or expired" });
     }
+    const challengeAuthVersion = Number.isSafeInteger(challenge.authVersion) ? challenge.authVersion : 0;
 
     const expectedOtpHash = hashOtp(otp);
     const user = await User.findOneAndUpdate(
       {
         _id: challenge.userId,
         isActive: { $ne: false },
+        $or: [
+          { authVersion: challengeAuthVersion },
+          ...(challengeAuthVersion === 0 ? [{ authVersion: { $exists: false } }] : [])
+        ],
         twoFactorOtpHash: expectedOtpHash,
         twoFactorOtpExpiresAt: { $gt: new Date() },
         twoFactorOtpAttempts: { $lt: OTP_MAX_ATTEMPTS }
@@ -758,12 +823,16 @@ const verifyTwoFactor = async (req, res) => {
         }
       },
       { returnDocument: "after" }
-    ).select("+authVersion +twoFactorOtpHash");
+    ).select("+authVersion +twoFactorOtpHash +password");
 
     if (!user) {
       const attempt = await User.findOneAndUpdate(
         {
           _id: challenge.userId,
+          $or: [
+            { authVersion: challengeAuthVersion },
+            ...(challengeAuthVersion === 0 ? [{ authVersion: { $exists: false } }] : [])
+          ],
           twoFactorOtpHash: { $exists: true },
           twoFactorOtpExpiresAt: { $gt: new Date() },
           twoFactorOtpAttempts: { $lt: OTP_MAX_ATTEMPTS }
@@ -797,7 +866,7 @@ const verifyTwoFactor = async (req, res) => {
 const getProfile = async (req, res) => {
   try {
     const user = await User.findById(req.user.userId)
-      .select("-password")
+      .select("+password +googleId")
       .populate("organizationId", "name");
 
     if (!user) {
@@ -805,11 +874,15 @@ const getProfile = async (req, res) => {
     }
 
     const profile = user.toObject();
+    const hasPassword = Boolean(profile.password);
+    delete profile.password;
+    delete profile.googleId;
     const organization = profile.organizationId;
     return res.json({
       message: "Profile fetched successfully",
       user: {
         ...profile,
+        hasPassword,
         organizationId: organization?._id || "",
         organizationName: organization?.name || "",
         permissions: Array.isArray(profile.permissions) ? profile.permissions : DEFAULT_MEMBER_PERMISSIONS,
@@ -941,7 +1014,7 @@ const deleteOrganization = async (req, res) => {
       }
 
       const organizationFilter = { organizationId: organization._id };
-      for (const model of [Payment, Udhaar, Sale, StockHistory, Product, Category, Customer, User]) {
+      for (const model of [Payment, Udhaar, Sale, StockHistory, Notification, Product, Category, Customer, User]) {
         await model.deleteMany(organizationFilter, { session });
       }
       const deleted = await Organization.deleteOne({ _id: organization._id }, { session });
@@ -1101,12 +1174,12 @@ const forgotPassword = async (req, res) => {
   }
 
   try {
-    const cleanEmail = email.trim();
+    const cleanEmail = email.trim().toLowerCase();
     const otp = createOtp();
     const sentAt = new Date();
     const user = await User.findOneAndUpdate(
       {
-        email: cleanEmail,
+        email: emailFilter(cleanEmail),
         isActive: { $ne: false },
         $or: [
           { passwordResetOtpSentAt: { $exists: false } },
@@ -1160,7 +1233,7 @@ const verifyResetOtp = async (req, res) => {
     const resetToken = crypto.randomBytes(32).toString("hex");
     const user = await User.findOneAndUpdate(
       {
-        email: email.trim(),
+        email: emailFilter(email),
         isActive: { $ne: false },
         passwordResetOtpHash: hashOtp(otp),
         passwordResetOtpExpiresAt: { $gt: new Date() },
@@ -1300,6 +1373,7 @@ const changePassword = async (req, res) => {
         permissions: Array.isArray(user.permissions) ? user.permissions : DEFAULT_MEMBER_PERMISSIONS,
         profileImage: user.profileImage,
         mustChangePassword: false,
+        hasPassword: true,
         twoFactorEnabled: isTwoFactorEnabled(user)
       }
     });
@@ -1313,6 +1387,7 @@ module.exports = {
   verifyRegistrationOtp,
   resendRegistrationOtp,
   loginUser,
+  resendTwoFactor,
   googleLogin,
   registerGoogleOrganization,
   verifyTwoFactor,

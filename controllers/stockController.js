@@ -1,7 +1,10 @@
 const mongoose = require("mongoose");
 const Product = require("../models/Product");
 const StockHistory = require("../models/StockHistory");
+const Notification = require("../models/Notification");
 const handleControllerError = require("../utils/controllerError");
+const notificationHub = require("../utils/notificationHub");
+const createStockTransitionNotification = require("../utils/stockNotification");
 const {
   escapeRegex,
   isValidObjectId,
@@ -79,7 +82,25 @@ const recordMovement = async (req, res, type) => {
           organizationId: req.user.organizationId,
           createdBy: req.user.userId
         }], { session });
-        movement = { product, history };
+        let notification = await createStockTransitionNotification({
+          product,
+          previousQuantity: type === "in" ? product.quantity - quantity : product.quantity + quantity,
+          organizationId: req.user.organizationId,
+          userId: req.user.userId,
+          session
+        });
+        if (!notification) {
+          [notification] = await Notification.create([{
+            organizationId: req.user.organizationId,
+            createdBy: req.user.userId,
+            type: "stock-activity",
+            title: type === "in" ? "Stock added" : "Stock removed",
+            message: `${quantity} units of ${product.name} ${type === "in" ? "added to" : "removed from"} inventory.`,
+            entityType: "product",
+            entityId: product._id
+          }], { session });
+        }
+        movement = { product, history, notification };
       });
     } finally {
       await session.endSession();
@@ -88,6 +109,7 @@ const recordMovement = async (req, res, type) => {
     if (movement.status) {
       return res.status(movement.status).json({ message: movement.message });
     }
+    if (movement.notification) notificationHub.publish(movement.notification.toObject());
 
     if (type === "in") {
       return res.status(200).json({

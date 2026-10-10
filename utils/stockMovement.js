@@ -1,5 +1,6 @@
 const Product = require("../models/Product");
 const StockHistory = require("../models/StockHistory");
+const createStockTransitionNotification = require("./stockNotification");
 
 const moveStock = async ({
   items,
@@ -10,6 +11,7 @@ const moveStock = async ({
   sourceType,
   sourceId
 }) => {
+  const notifications = [];
   for (const item of items) {
     const quantityFilter = type === "out"
       ? { $gte: item.quantity }
@@ -25,6 +27,9 @@ const moveStock = async ({
         { status: 409 }
       );
     }
+    const previousQuantity = type === "out"
+      ? product.quantity + item.quantity
+      : product.quantity - item.quantity;
     await StockHistory.create([{
       productId: product._id,
       type,
@@ -33,7 +38,16 @@ const moveStock = async ({
       createdBy: userId,
       ...(sourceType && sourceId ? { sourceType, sourceId } : {})
     }], { session });
+    const notification = await createStockTransitionNotification({
+      product,
+      previousQuantity,
+      organizationId,
+      userId,
+      session
+    });
+    if (notification) notifications.push(notification);
   }
+  return notifications;
 };
 
 module.exports = moveStock;

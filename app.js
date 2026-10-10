@@ -8,6 +8,7 @@ const stockRoutes = require("./routes/stockRoutes");
 const salesRoutes = require("./routes/salesRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const udhaarRoutes = require("./routes/udhaarRoutes");
+const notificationRoutes = require("./routes/notificationRoutes");
 const cors = require("cors");
 
 const app = express();
@@ -50,7 +51,7 @@ app.use(cors({
     }
     return callback(new Error("Origin is not allowed"));
   },
-  methods: ["GET", "POST", "PUT", "DELETE"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
   allowedHeaders: ["Content-Type", "Authorization"]
 }));
 
@@ -64,6 +65,7 @@ app.use("/stock", loggerMiddleware, jwtMiddleware, stockRoutes);
 app.use("/sales", loggerMiddleware, jwtMiddleware, salesRoutes);
 app.use("/customers", loggerMiddleware, jwtMiddleware, customerRoutes);
 app.use("/udhaar", loggerMiddleware, jwtMiddleware, udhaarRoutes);
+app.use("/notifications", notificationRoutes);
 
 app.get("/", (req, res) => {
   res.json({

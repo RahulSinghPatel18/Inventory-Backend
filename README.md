@@ -10,6 +10,7 @@ REST API for inventory management, built with Node.js, Express and MongoDB/Mongo
 - Permission-based Sales, Customers, Udhaar and Analytics access for organization members (admins bypass permissions).
 - Product/category CRUD and inventory statistics.
 - Stock in/out, movement history, low/out-of-stock alerts and summaries.
+- Persisted organization-scoped notifications with authenticated Server-Sent Events, unread counts and per-user read status.
 - Input validation, pagination, search, indexes, CORS allow-list and auth rate limits.
 
 ## Request flow
@@ -54,7 +55,7 @@ Set `VITE_API_URL` and `VITE_GMAIL_CLIENT_ID` in the frontend environment. The f
 ## Authentication
 
 - Email/password registration validates the name, email, organization and password, then emails a 6-digit registration code. The organization and administrator are created together in a MongoDB transaction only after OTP verification; successful verification returns a JWT and signs the user in. Registration OTPs expire after 10 minutes, allow five attempts and can be resent after 60 seconds. Pending registration data is held in memory until verification, so production deployments need a single instance/sticky routing or a shared ephemeral store.
-- Google sign-in verifies the Google ID token on the server and requires a verified Google email. Existing accounts are found by Google ID or verified email and retain their database role and organization. A new Google identity receives a short-lived signed setup token; only after the user submits an organization name does the server create the organization and admin account. Google registration does not use registration email OTP.
+- Google sign-in verifies the Google ID token on the server and requires a verified Google email. Existing accounts are found by Google ID or verified email and retain their database role and organization. A new Google identity receives a short-lived signed setup token; only after the user submits an organization name does the server create the organization and admin account. Google registration does not use registration email OTP. Google-only accounts can set or change a local password through the existing email-OTP password-reset flow; no unknown current password is required.
 - Administrators default to email 2FA enabled; regular users default to disabled. When enabled, password login emails a single-use 6-digit code, valid for 10 minutes, before issuing an access token. Codes are limited to one send per account per minute. Google authentication uses the verified Google credential and does not use email OTP. Users can change the 2FA preference in Settings. For legacy administrators without a saved preference, 2FA is treated as enabled.
 - A completed login returns a JWT signed with `HS256`, valid for one day. Roles and organization IDs in protected requests are revalidated against the database.
 - Login, Google sign-in, registration completion and profile responses include the user's database-backed `permissions` array (empty for users without assigned permissions); the JWT middleware separately reloads permissions from the database for authorization.
@@ -67,10 +68,17 @@ Set `VITE_API_URL` and `VITE_GMAIL_CLIENT_ID` in the frontend environment. The f
 - Products, categories and stock require JWT. Product and category create/update/delete require admin; organization members can read categories and use stock operations.
 - Data queries are scoped by the token's `organizationId`.
 - Organization members sign in with the password set by their administrator and must change that temporary password on first sign-in. Administrators can update members, activate/deactivate accounts, delete regular members, or set a new password in their organization only.
-- Forgot-password requests return the same message whether or not an account exists. A 6-digit code is emailed, expires after 10 minutes, allows up to five verification attempts, and is limited to one send per minute. A successful code verification issues a short-lived one-use reset token. 2FA and password-reset emails use the MYStockHHub text wordmark, plain-text fallback, expiry and security guidance. Gmail API credentials must be configured for delivery.
+- Forgot-password requests return the same message whether or not an account exists. A 6-digit code is emailed, expires after 10 minutes, allows up to five verification attempts, and is limited to one send per minute. A successful code verification issues a short-lived one-use reset token. 2FA and password-reset emails use the MYStockHub text wordmark, plain-text fallback, expiry and security guidance. Gmail API credentials must be configured for delivery.
 - The product-facing term is **member**. `/users` route paths, the `User` MongoDB model, the JWT `userId` claim, the `user` response field, and the `user` role value are retained as internal compatibility names.
 - Completed password changes and administrator resets invalidate prior JWTs. Password reset tokens are stored as hashes and are never returned by the API.
-- Password/Google login and 2FA/password-reset code verification limits: 10 requests/IP/15 min. Registration and forgot-password requests: 5 requests/IP/hour. Reset-token attempts: 10 requests/IP/15 min.
+- Password/Google login, OTP send/verify and password-reset token limits: 10 requests/IP/15 min. Registration and forgot-password requests: 5 requests/IP/hour. OTPs are additionally limited to one send per account per minute.
+
+## Live notifications
+
+- Inventory transitions and completed sales create organization-scoped notification records. Records expire after 90 days.
+- An authenticated member with `notifications.view` receives new events over `GET /notifications/stream` (SSE), and can list notifications, mark one read, or mark all read. Read status is tracked per member.
+- Stock alert types respect the member's local notification preferences; sales notifications remain enabled. The browser reconnects to SSE with exponential backoff.
+- SSE fan-out is currently process-local. For horizontally scaled/multi-instance deployments, use a shared pub/sub transport (for example Redis) and a shared rate-limit store; pending email registrations also require a shared ephemeral store.
 
 ## API reference
 
@@ -86,6 +94,7 @@ Default base URL: `http://localhost:3000`. Paths use the capitalization shown.
 | `POST` | `/users/Google` | Public, rate-limited | Verify Google ID token; sign in existing user or return organization setup token |
 | `POST` | `/users/Google/Register` | Public, rate-limited | Create organization/admin using a verified Google setup token |
 | `POST` | `/users/VerifyTwoFactor` | Public, rate-limited | Verify a sign-in code and return JWT |
+| `POST` | `/users/ResendTwoFactor` | Public, rate-limited | Resend a sign-in code after the per-account cooldown |
 | `POST` | `/users/ForgotPassword` | Public, rate-limited | Email a password reset code without confirming whether the account exists |
 | `POST` | `/users/VerifyResetOtp` | Public, rate-limited | Verify a reset code and receive a short-lived reset token |
 | `POST` | `/users/ResetPassword` | Public, rate-limited | Set a new password with a valid reset token |
@@ -95,6 +104,10 @@ Default base URL: `http://localhost:3000`. Paths use the capitalization shown.
 | `PUT` | `/users/Organization` | JWT + admin | Update the current organization's name |
 | `DELETE` | `/users/Organization` | JWT + admin | Delete the current organization and its related data; body must include the exact `confirmationName` and `confirmationText: "DELETE"` |
 | `PUT` | `/users/ChangePassword` | JWT | Change own password; required before using the app for temporary-password accounts |
+| `GET` | `/notifications?types=stock-low,stock-out,sale-created` | JWT + `notifications.view` | List visible notifications and the current member's unread count |
+| `GET` | `/notifications/stream` | JWT + `notifications.view` | Receive organization-scoped live notification events using SSE |
+| `PATCH` | `/notifications/:id/read` | JWT + `notifications.view` | Mark one organization notification read for the current member |
+| `PATCH` | `/notifications/read-all` | JWT + `notifications.view` | Mark all organization notifications read for the current member |
 | `GET` | `/users/Members?page=1&limit=10&sortBy=name&sortOrder=asc` | JWT + admin | List and sort members in the administrator's organization (`name`, `email`, `status`) |
 | `POST` | `/users/Members` | JWT + admin | Create a regular member in the administrator's organization |
 | `PUT` | `/users/Members/:id` | JWT + admin | Update a member's name/email in the administrator's organization |
