@@ -1,14 +1,14 @@
 const { rateLimit } = require("express-rate-limit");
 
 const createLimiter = (windowMs, limit, message) => rateLimit({
-windowMs,
-limit,
-standardHeaders: "draft-8",
-legacyHeaders: false,
-message: { message },
-handler: (req, res, next, options) => {
-res.status(options.statusCode).json(options.message);
-}
+  windowMs,
+  limit,
+  standardHeaders: "draft-8",
+  legacyHeaders: false,
+  message: { message },
+  handler: (req, res, next, options) => {
+    res.status(options.statusCode).json(options.message);
+  }
 });
 
 const loginRateLimit = createLimiter(
@@ -59,6 +59,12 @@ const feedbackRateLimit = createLimiter(
 "Too many feedback reports. Please try again in 15 minutes."
 );
 
+const exportRateLimit = createLimiter(
+  15 * 60 * 1000,
+  8,
+  "Too many exports requested. Please try again in 15 minutes."
+);
+
 module.exports = {
 loginRateLimit,
 registerRateLimit,
@@ -67,5 +73,6 @@ passwordResetOtpRateLimit,
 resetPasswordRateLimit,
 sendOtpRateLimit,
 verifyOtpRateLimit,
-feedbackRateLimit
+feedbackRateLimit,
+exportRateLimit
 };

@@ -31,6 +31,7 @@ const listNotifications = async (req, res, next) => {
     }
     const filter = {
       organizationId: req.user.organizationId,
+      dismissedBy: { $ne: req.user.userId },
       ...(types ? { type: { $in: types } } : {})
     };
     const [notifications, unreadCount] = await Promise.all([
@@ -40,7 +41,12 @@ const listNotifications = async (req, res, next) => {
         .skip(pagination.skip)
         .limit(pagination.limit)
         .lean(),
-      Notification.countDocuments({ ...filter, readBy: { $ne: req.user.userId } })
+      Notification.countDocuments({
+        organizationId: req.user.organizationId,
+        dismissedBy: { $ne: req.user.userId },
+        readBy: { $ne: req.user.userId },
+        ...(types ? { type: { $in: types } } : {})
+      })
     ]);
 
     return res.json({
@@ -79,11 +85,50 @@ const markAllNotificationsRead = async (req, res, next) => {
     await Notification.updateMany(
       {
         organizationId: req.user.organizationId,
+        dismissedBy: { $ne: req.user.userId },
         readBy: { $ne: req.user.userId }
       },
       { $addToSet: { readBy: req.user.userId } }
     );
     return res.json({ message: "Notifications marked as read" });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const dismissNotification = async (req, res, next) => {
+  if (!isValidObjectId(req.params.id)) {
+    return res.status(400).json({ message: "Invalid notification ID" });
+  }
+
+  try {
+    const result = await Notification.updateOne(
+      {
+        _id: req.params.id,
+        organizationId: req.user.organizationId,
+        dismissedBy: { $ne: req.user.userId }
+      },
+      { $addToSet: { dismissedBy: req.user.userId } }
+    );
+    if (!result.matchedCount) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
+    return res.json({ message: "Notification dismissed" });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+const dismissAllNotifications = async (req, res, next) => {
+  try {
+    await Notification.updateMany(
+      {
+        organizationId: req.user.organizationId,
+        dismissedBy: { $ne: req.user.userId }
+      },
+      { $addToSet: { dismissedBy: req.user.userId } }
+    );
+    return res.json({ message: "Notifications cleared" });
   } catch (error) {
     return next(error);
   }
@@ -122,5 +167,7 @@ module.exports = {
   listNotifications,
   markNotificationRead,
   markAllNotificationsRead,
+  dismissNotification,
+  dismissAllNotifications,
   streamNotifications
 };

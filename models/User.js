@@ -54,6 +54,12 @@ const userSchema = new mongoose.Schema({
         type: Boolean,
         default: true
     },
+    legalAcceptedAt: {
+        type: Date
+    },
+    legalPolicyVersion: {
+        type: String
+    },
     googleId: {
         type: String,
         select: false,
@@ -117,7 +123,7 @@ const userSchema = new mongoose.Schema({
         select: false
     }
 
-});
+}, { timestamps: true });
 userSchema.index({ passwordResetTokenHash: 1 }, { sparse: true });
 
 const User = mongoose.model("User", userSchema);

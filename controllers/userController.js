@@ -28,6 +28,7 @@ const REGISTRATION_TTL_MS = 24 * 60 * 60 * 1000;
 const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 const MAX_PENDING_REGISTRATIONS = 10_000;
+const LEGAL_POLICY_VERSION = "1";
 const OTP_GENERIC_MESSAGE = "If the account is eligible, a verification code will be sent.";
 const pendingRegistrations = new Map();
 const isValidPassword = (password) => (
@@ -223,7 +224,7 @@ const getOrganizationUsers = async (req, res) => {
     const [totalUsers, users] = await Promise.all([
       User.countDocuments(filter),
       User.find(filter)
-        .select("_id name email role organizationId permissions mustChangePassword isActive")
+        .select("_id name email role organizationId permissions mustChangePassword isActive profileImage createdAt")
         .sort({ [sortFields[sortBy]]: sortOrder === "asc" ? 1 : -1, _id: 1 })
         .skip(pagination.skip)
         .limit(pagination.limit)
@@ -309,16 +310,17 @@ const createOrganizationUser = async (req, res) => {
 const registerUser = async (req, res) => {
   let registrationReservation;
   try {
-    const { name, email, password, organizationName } = req.body || {};
+    const { name, email, password, organizationName, acceptedPolicies } = req.body || {};
     if (
       !isNonEmptyString(name) ||
       !isNonEmptyString(email) ||
       !isValidEmail(email.trim()) ||
       !isValidPassword(password) ||
-      !isNonEmptyString(organizationName)
+      !isNonEmptyString(organizationName) ||
+      acceptedPolicies !== true
     ) {
       return res.status(400).json({
-        message: "Enter a name, valid email, strong password and organization name"
+        message: "Enter a name, valid email, strong password and organization name, and accept the Terms of Service and Privacy Policy"
       });
     }
 
@@ -361,6 +363,8 @@ const registerUser = async (req, res) => {
       email: cleanEmail,
       password: await bcrypt.hash(password, 10),
       organizationName: cleanOrganizationName,
+      legalAcceptedAt: new Date(),
+      legalPolicyVersion: LEGAL_POLICY_VERSION,
       otpHash: hashOtp(otp),
       expiresAt: Date.now() + OTP_TTL_MS,
       registrationExpiresAt: Date.now() + REGISTRATION_TTL_MS,
@@ -442,7 +446,9 @@ const verifyRegistrationOtp = async (req, res) => {
         password: registration.password,
         organizationId: organization._id,
         role: "admin",
-        emailVerified: true
+        emailVerified: true,
+        legalAcceptedAt: registration.legalAcceptedAt,
+        legalPolicyVersion: registration.legalPolicyVersion
       }], { session });
     });
     pendingRegistrations.delete(cleanEmail);
@@ -677,7 +683,7 @@ const googleLogin = async (req, res) => {
 };
 
 const registerGoogleOrganization = async (req, res) => {
-  const { registrationToken, organizationName } = req.body || {};
+  const { registrationToken, organizationName, acceptedPolicies } = req.body || {};
   if (
     typeof registrationToken !== "string" ||
     !isNonEmptyString(organizationName) ||
@@ -732,6 +738,12 @@ const registerGoogleOrganization = async (req, res) => {
       return await createSessionResponse(user, res, "Google sign-in successful");
     }
 
+    if (acceptedPolicies !== true) {
+      return res.status(400).json({
+        message: "Accept the Terms of Service and Privacy Policy to create an organization."
+      });
+    }
+
     let session;
     try {
       session = await mongoose.startSession();
@@ -745,7 +757,9 @@ const registerGoogleOrganization = async (req, res) => {
           googleId: identity.googleId,
           organizationId: organization._id,
           role: "admin",
-          emailVerified: true
+          emailVerified: true,
+          legalAcceptedAt: new Date(),
+          legalPolicyVersion: LEGAL_POLICY_VERSION
         }], { session });
       });
     } catch (error) {

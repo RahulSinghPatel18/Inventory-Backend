@@ -12,6 +12,8 @@ const notificationRoutes = require("./routes/notificationRoutes");
 const exportRoutes = require("./routes/exportRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const cors = require("cors");
+const helmet = require("helmet");
+const { requestSecurity } = require("./middleware/requestSecurity");
 
 const app = express();
 app.disable("x-powered-by");
@@ -39,12 +41,11 @@ const allowedOrigins = new Set([
   ...(process.env.NODE_ENV === "production" ? [] : developmentOrigins)
 ]);
 
-app.use((req, res, next) => {
-  res.setHeader("X-Content-Type-Options", "nosniff");
-  res.setHeader("X-Frame-Options", "DENY");
-  res.setHeader("Referrer-Policy", "no-referrer");
-  next();
-});
+app.use(helmet({
+  frameguard: { action: "deny" },
+  referrerPolicy: { policy: "no-referrer" },
+  crossOriginResourcePolicy: false
+}));
 
 app.use(cors({
   origin(origin, callback) {
@@ -58,6 +59,7 @@ app.use(cors({
 }));
 
 app.use(express.json({ limit: "1mb" }));
+app.use(requestSecurity);
 
 // Mount the product routes
 app.use("/products", loggerMiddleware, productRoutes);

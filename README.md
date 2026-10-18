@@ -77,7 +77,7 @@ Set `VITE_API_URL` and `VITE_GMAIL_CLIENT_ID` in the frontend environment. The f
 ## Live notifications
 
 - Inventory transitions and completed sales create organization-scoped notification records. Records expire after 90 days.
-- An authenticated member with `notifications.view` receives new events over `GET /notifications/stream` (SSE), and can list notifications, mark one read, or mark all read. Read status is tracked per member.
+- An authenticated member with `notifications.view` receives new events over `GET /notifications/stream` (SSE), and can list notifications, mark one read, mark all read, dismiss one, or clear all. Read and dismissal status are tracked per member; dismissing notifications does not remove them for other organization members.
 - Stock alert types respect the member's local notification preferences; sales notifications remain enabled. The browser reconnects to SSE with exponential backoff.
 - SSE fan-out is currently process-local. For horizontally scaled/multi-instance deployments, use a shared pub/sub transport (for example Redis) and a shared rate-limit store; pending email registrations also require a shared ephemeral store.
 
@@ -117,6 +117,8 @@ Default base URL: `http://localhost:3000`. Paths use the capitalization shown.
 | `GET` | `/notifications/stream` | JWT + `notifications.view` | Receive organization-scoped live notification events using SSE |
 | `PATCH` | `/notifications/:id/read` | JWT + `notifications.view` | Mark one organization notification read for the current member |
 | `PATCH` | `/notifications/read-all` | JWT + `notifications.view` | Mark all organization notifications read for the current member |
+| `DELETE` | `/notifications/:id` | JWT + `notifications.view` | Dismiss one notification for the current member |
+| `DELETE` | `/notifications/` | JWT + `notifications.view` | Clear all notifications for the current member |
 | `GET` | `/users/Members?page=1&limit=10&sortBy=name&sortOrder=asc` | JWT + admin | List and sort members in the administrator's organization (`name`, `email`, `status`) |
 | `POST` | `/users/Members` | JWT + admin | Create a regular member in the administrator's organization |
 | `PUT` | `/users/Members/:id` | JWT + admin | Update a member's name/email in the administrator's organization |

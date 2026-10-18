@@ -40,11 +40,16 @@ const notificationSchema = new mongoose.Schema({
   readBy: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: "User"
+  }],
+  dismissedBy: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: "User"
   }]
 }, { timestamps: true });
 
 notificationSchema.index({ organizationId: 1, createdAt: -1 });
 notificationSchema.index({ organizationId: 1, readBy: 1, createdAt: -1 });
+notificationSchema.index({ organizationId: 1, dismissedBy: 1, createdAt: -1 });
 notificationSchema.index({ createdAt: 1 }, { expireAfterSeconds: 90 * 24 * 60 * 60 });
 
 module.exports = mongoose.model("Notification", notificationSchema);

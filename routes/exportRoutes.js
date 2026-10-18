@@ -2,8 +2,10 @@ const express = require("express");
 const { downloadDataset, downloadFullBackup, downloadReports } = require("../controllers/exportController");
 const adminMiddleware = require("../middleware/roleMiddleware");
 const permission = require("../middleware/permissionMiddleware");
+const { exportRateLimit } = require("../middleware/authRateLimit");
 
 const router = express.Router();
+router.use(exportRateLimit);
 
 router.get("/full-backup", adminMiddleware, downloadFullBackup);
 router.get("/reports", permission(["reports.products", "reports.stock", "reports.sales", "reports.udhaar"]), downloadReports);

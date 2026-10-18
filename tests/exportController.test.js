@@ -212,19 +212,195 @@ test("product exports stay organization-scoped and hide cost from read-only memb
     const finished = once(response, "finish");
     await downloadDataset("products")({
       user: { organizationId, role: "member", permissions: ["products.view"] },
-      query: { format: "csv" }
+      query: {
+        format: "csv",
+        category: "507f1f77bcf86cd799439012",
+        name: "Sample",
+        sortBy: "name",
+        sortOrder: "asc"
+      }
     }, response);
     await finished;
 
     const csv = Buffer.concat(response.chunks).toString("utf8");
-    assert.deepEqual(filters, [{ organizationId }]);
+    assert.deepEqual(filters, [{
+      organizationId,
+      category: "507f1f77bcf86cd799439012",
+      name: { $regex: "Sample", $options: "i" }
+    }]);
     assert.equal(selectedCost, false);
-    assert.match(csv, /"unitPrice","inventoryValue"/);
+    assert.match(csv, /"unitPriceINR","inventoryValueINR"/);
     assert.doesNotMatch(csv, /unitCost/);
     assert.match(csv, /"Sample","category-id","Food","3","20"/);
     assert.equal(response.headers["Content-Disposition"], 'attachment; filename="mystockhub-products.csv"');
   } finally {
     Product.find = originalProductFind;
+    Organization.findById = originalOrganizationFindById;
+  }
+});
+
+test("sales exports apply date and product search filters and include item-level INR amounts", async () => {
+  const organizationId = "507f1f77bcf86cd799439011";
+  const originalSaleFind = Sale.find;
+  const originalOrganizationFindById = Organization.findById;
+  let filter;
+  Sale.find = (query) => {
+    filter = query;
+    return {
+      populate() { return this; },
+      sort() { return this; },
+      lean: async () => [{
+        _id: "sale-id",
+        createdAt: new Date("2026-10-18T10:00:00.000Z"),
+        updatedAt: new Date("2026-10-18T10:00:00.000Z"),
+        status: "completed",
+        items: [{
+          productId: "product-id",
+          productName: "Tea",
+          quantity: 2,
+          unitPriceCents: 1250,
+          lineTotalCents: 2500
+        }],
+        totalCents: 2500,
+        paidCents: 2500,
+        paymentMethod: "cash",
+        verification: "none",
+        createdBy: { name: "Store owner" }
+      }]
+    };
+  };
+  Organization.findById = () => ({
+    select() {
+      return { lean: async () => ({ name: "Example Store" }) };
+    }
+  });
+
+  try {
+    const response = createResponse();
+    const finished = once(response, "finish");
+    await downloadDataset("sales")({
+      user: { organizationId, role: "member", permissions: ["sales.view"] },
+      query: {
+        format: "csv",
+        search: "Tea",
+        startDate: "2026-10-18",
+        endDate: "2026-10-18",
+        sortBy: "createdAt",
+        sortOrder: "desc",
+        limit: "all"
+      }
+    }, response);
+    await finished;
+
+    const csv = Buffer.concat(response.chunks).toString("utf8");
+    assert.deepEqual(filter, {
+      organizationId,
+      status: { $ne: "cancelled" },
+      customerId: { $exists: false },
+      createdAt: {
+        $gte: new Date("2026-10-18T00:00:00.000Z"),
+        $lte: new Date("2026-10-18T23:59:59.999Z")
+      },
+      $or: [{ "items.productName": { $regex: "Tea", $options: "i" } }]
+    });
+    assert.match(csv, /"unitPriceINR","lineTotalINR","saleTotalINR","paidINR","balanceINR"/);
+    assert.match(csv, /"Tea","2","12\.5","25","25","25","0","cash"/);
+  } finally {
+    Sale.find = originalSaleFind;
+    Organization.findById = originalOrganizationFindById;
+  }
+});
+
+test("Udhaar Excel export separates item rows from permission-scoped payment history", async () => {
+  const organizationId = "507f1f77bcf86cd799439011";
+  const originalUdhaarFind = Udhaar.find;
+  const originalPaymentFind = Payment.find;
+  const originalOrganizationFindById = Organization.findById;
+  Udhaar.find = () => ({
+    populate() { return this; },
+    sort() { return this; },
+    lean: async () => [{
+      _id: "udhaar-id",
+      customerId: { _id: "customer-id", name: "Asha", phone: "9999999999" },
+      items: [{
+        productId: "product-id",
+        productName: "Rice",
+        quantity: 3,
+        unitPriceCents: 2000,
+        lineTotalCents: 6000
+      }],
+      totalCents: 6000,
+      paidCents: 2000,
+      paymentStatus: "partial",
+      status: "active",
+      paymentMethod: "cash",
+      createdBy: { name: "Store owner" },
+      createdAt: new Date("2026-10-18T10:00:00.000Z"),
+      updatedAt: new Date("2026-10-18T10:00:00.000Z")
+    }]
+  });
+  Payment.find = () => ({
+    populate() { return this; },
+    sort() { return this; },
+    lean: async () => [{
+      _id: "payment-id",
+      udhaarId: "udhaar-id",
+      customerId: { _id: "customer-id", name: "Asha" },
+      amountCents: 2000,
+      method: "cash",
+      note: "First installment",
+      verification: "none",
+      createdBy: { name: "Store owner" },
+      createdAt: new Date("2026-10-18T11:00:00.000Z")
+    }]
+  });
+  Organization.findById = () => ({
+    select() {
+      return { lean: async () => ({ name: "Example Store" }) };
+    }
+  });
+
+  try {
+    const response = createResponse();
+    const finished = once(response, "finish");
+    await downloadDataset("udhaar")({
+      user: { organizationId, role: "admin", permissions: [] },
+      query: { format: "xlsx", limit: "all" }
+    }, response);
+    await finished;
+
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.concat(response.chunks));
+    assert.deepEqual(workbook.worksheets.map((sheet) => sheet.name), [
+      "Organization",
+      "Udhaar",
+      "Udhaar payments"
+    ]);
+    const udhaarSheet = workbook.getWorksheet("Udhaar");
+    assert.equal(udhaarSheet.getCell("C2").value, "Asha");
+    assert.equal(udhaarSheet.getCell("G2").value, 60);
+    assert.equal(udhaarSheet.getCell("H2").value, 20);
+    assert.equal(udhaarSheet.getCell("I2").value, 40);
+    assert.equal(udhaarSheet.getCell("K2").value, "Rice");
+    assert.equal(udhaarSheet.getCell("L2").value, 3);
+    const paymentSheet = workbook.getWorksheet("Udhaar payments");
+    assert.equal(paymentSheet.getCell("E2").value, 20);
+    assert.equal(paymentSheet.getCell("F2").value, "cash");
+    assert.equal(paymentSheet.getCell("G2").value, "First installment");
+
+    const csvResponse = createResponse();
+    const csvFinished = once(csvResponse, "finish");
+    await downloadDataset("udhaar")({
+      user: { organizationId, role: "admin", permissions: [] },
+      query: { format: "csv", limit: "all" }
+    }, csvResponse);
+    await csvFinished;
+    assert.equal(Buffer.concat(csvResponse.chunks).readUInt32LE(0), 0x04034b50);
+    assert.equal(csvResponse.headers["Content-Type"], "application/zip");
+    assert.equal(csvResponse.headers["Content-Disposition"], 'attachment; filename="mystockhub-udhaar.zip"');
+  } finally {
+    Udhaar.find = originalUdhaarFind;
+    Payment.find = originalPaymentFind;
     Organization.findById = originalOrganizationFindById;
   }
 });
