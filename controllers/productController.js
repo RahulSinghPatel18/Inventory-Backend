@@ -22,14 +22,27 @@ const parseQuantity = (value) => {
   return Number.isSafeInteger(quantity) ? quantity : null;
 };
 
+const canViewProductCost = (user) => (
+  ["admin", "Admin"].includes(user?.role) ||
+  user?.permissions?.some((permission) => ["products.create", "products.update"].includes(permission))
+);
+
 const createProduct = async (req, res) => {
   try {
-    const { name, price, quantity, category, image } = req.body || {};
+    const { name, price, cost, quantity, category, image } = req.body || {};
     const parsedPrice = parseNonNegativeNumber(price);
+    const parsedCost = cost === undefined || cost === null || cost === ""
+      ? undefined
+      : parseNonNegativeNumber(cost);
     const parsedQuantity = parseQuantity(quantity);
-    if (!isNonEmptyString(name) || parsedPrice === null || parsedQuantity === null) {
+    if (
+      !isNonEmptyString(name) ||
+      parsedPrice === null ||
+      parsedQuantity === null ||
+      (cost !== undefined && cost !== null && cost !== "" && parsedCost === null)
+    ) {
       return res.status(400).json({
-        message: "Enter a product name, valid price and whole-number quantity"
+        message: "Enter a product name, valid price, optional non-negative unit cost and whole-number quantity"
       });
     }
     if (!isValidObjectId(category)) {
@@ -52,6 +65,7 @@ const createProduct = async (req, res) => {
     const product = await Product.create({
       name: name.trim(),
       price: parsedPrice,
+      ...(parsedCost !== undefined ? { cost: parsedCost } : {}),
       quantity: parsedQuantity,
       category,
       ...(image ? { image } : {}),
@@ -122,6 +136,7 @@ const getProducts = async (req, res) => {
     }
 
     const sortDirection = sortOrder === "asc" ? 1 : -1;
+    const canViewCost = canViewProductCost(req.user);
     const productQuery = ["category", "totalValue"].includes(sortBy)
       ? Product.aggregate([
         { $match: filter },
@@ -161,15 +176,26 @@ const getProducts = async (req, res) => {
             createdBy: { $ifNull: [{ $arrayElemAt: ["$creatorDetails", 0] }, null] }
           }
         },
-        { $project: { categoryDetails: 0, categoryName: 0, creatorDetails: 0 } }
+        {
+          $project: {
+            categoryDetails: 0,
+            categoryName: 0,
+            creatorDetails: 0,
+            ...(!canViewCost ? { cost: 0 } : {})
+          }
+        }
       ])
-      : Product.find(filter)
+      : (() => {
+        const query = Product.find(filter);
+        if (canViewCost) query.select("+cost");
+        return query
         .sort({ [sortFields[sortBy]]: sortDirection, _id: 1 })
         .skip(pagination.skip)
         .limit(pagination.limit)
         .populate("category", "name")
         .populate("createdBy", "name email role")
         .lean();
+      })();
 
     const [totalProducts, products] = await Promise.all([
       Product.countDocuments(filter),
@@ -197,10 +223,12 @@ const getProductById = async (req, res) => {
       return res.status(400).json({ message: "Invalid product ID" });
     }
 
-    const product = await Product.findOne({
+    const query = Product.findOne({
       _id: req.params.id,
       organizationId: req.user.organizationId
-    })
+    });
+    if (canViewProductCost(req.user)) query.select("+cost");
+    const product = await query
       .populate("category", "name")
       .populate("createdBy", "name email role")
       .lean();
@@ -220,8 +248,9 @@ const updateProduct = async (req, res) => {
       return res.status(400).json({ message: "Invalid product ID" });
     }
 
-    const { name, price, quantity, category, image } = req.body || {};
+    const { name, price, cost, quantity, category, image } = req.body || {};
     const update = {};
+    const unset = {};
     if (image !== undefined) {
       if (!isValidProductImage(image)) {
         return res.status(400).json({
@@ -241,6 +270,15 @@ const updateProduct = async (req, res) => {
       if (value === null) return res.status(400).json({ message: "Price cannot be negative" });
       update.price = value;
     }
+    if (cost !== undefined) {
+      if (cost === null || cost === "") {
+        unset.cost = 1;
+      } else {
+        const value = parseNonNegativeNumber(cost);
+        if (value === null) return res.status(400).json({ message: "Unit cost cannot be negative" });
+        update.cost = value;
+      }
+    }
     if (quantity !== undefined) {
       return res.status(400).json({
         message: "Product quantity cannot be edited here. Use the authorized stock in/out action."
@@ -258,17 +296,22 @@ const updateProduct = async (req, res) => {
       }
       update.category = category;
     }
-    if (Object.keys(update).length === 0) {
+    if (Object.keys(update).length === 0 && Object.keys(unset).length === 0) {
       return res.status(400).json({
         message: "At least one field is required to update"
       });
     }
 
+    const changes = {
+      ...(Object.keys(update).length ? { $set: update } : {}),
+      ...(Object.keys(unset).length ? { $unset: unset } : {})
+    };
     const product = await Product.findOneAndUpdate(
       { _id: req.params.id, organizationId: req.user.organizationId },
-      { $set: update },
+      changes,
       { returnDocument: "after", runValidators: true }
     )
+      .select("+cost")
       .populate("category", "name")
       .populate("createdBy", "name email role");
 

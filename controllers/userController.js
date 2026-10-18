@@ -999,9 +999,9 @@ const updateOrganization = async (req, res) => {
 };
 
 const deleteOrganization = async (req, res) => {
-  const { confirmationName, confirmationText } = req.body || {};
-  if (!isNonEmptyString(confirmationName) || confirmationText !== "DELETE") {
-    return res.status(400).json({ message: "Enter the organization name and DELETE to confirm" });
+  const { confirmationName } = req.body || {};
+  if (!isNonEmptyString(confirmationName)) {
+    return res.status(400).json({ message: "Enter the organization name to confirm deletion" });
   }
 
   const session = await mongoose.startSession();

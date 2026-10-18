@@ -9,6 +9,7 @@ REST API for inventory management, built with Node.js, Express and MongoDB/Mongo
 - Organization-scoped customers, sales, append-only payments, customer ledgers and sales analytics.
 - Permission-based Sales, Customers, Udhaar and Analytics access for organization members (admins bypass permissions).
 - Product/category CRUD and inventory statistics.
+- Optional, non-negative product unit cost is available to administrators and product managers and is included in the full backup.
 - Stock in/out, movement history, low/out-of-stock alerts and summaries.
 - Persisted organization-scoped notifications with authenticated Server-Sent Events, unread counts and per-user read status.
 - Input validation, pagination, search, indexes, CORS allow-list and auth rate limits.
@@ -71,7 +72,7 @@ Set `VITE_API_URL` and `VITE_GMAIL_CLIENT_ID` in the frontend environment. The f
 - Forgot-password requests return the same message whether or not an account exists. A 6-digit code is emailed, expires after 10 minutes, allows up to five verification attempts, and is limited to one send per minute. A successful code verification issues a short-lived one-use reset token. 2FA and password-reset emails use the MYStockHub text wordmark, plain-text fallback, expiry and security guidance. Gmail API credentials must be configured for delivery.
 - The product-facing term is **member**. `/users` route paths, the `User` MongoDB model, the JWT `userId` claim, the `user` response field, and the `user` role value are retained as internal compatibility names.
 - Completed password changes and administrator resets invalidate prior JWTs. Password reset tokens are stored as hashes and are never returned by the API.
-- Password/Google login, OTP send/verify and password-reset token limits: 10 requests/IP/15 min. Registration and forgot-password requests: 5 requests/IP/hour. OTPs are additionally limited to one send per account per minute.
+- Password/Google login, general OTP send/verify and password-reset token limits: 10 requests/IP/15 min. Registration requests: 5 requests/IP/hour. Forgot-password requests and reset-code verification are limited to 5 requests/IP/15 min. OTPs are additionally limited to one send per account per minute.
 
 ## Live notifications
 
@@ -98,11 +99,19 @@ Default base URL: `http://localhost:3000`. Paths use the capitalization shown.
 | `POST` | `/users/ForgotPassword` | Public, rate-limited | Email a password reset code without confirming whether the account exists |
 | `POST` | `/users/VerifyResetOtp` | Public, rate-limited | Verify a reset code and receive a short-lived reset token |
 | `POST` | `/users/ResetPassword` | Public, rate-limited | Set a new password with a valid reset token |
+| `GET` | `/api/v1/export/full-backup?format=xlsx` | JWT + organization admin | Download an Excel workbook with separate sheets for organization metadata/settings, inventory, categories, sales, stock history, payments, customers, Udhaar, notifications and members |
+| `GET` | `/api/v1/export/full-backup?format=csv` | JWT + organization admin | Download a ZIP containing separate UTF-8 CSV files and organization metadata JSON |
+| `GET` | `/api/v1/export/reports?format=xlsx` or `?format=csv` | JWT + a report permission | Download one workbook or CSV ZIP containing only report sections allowed for the member; accepts the Reports page `category`, `type`, `startDate` and `endDate` filters |
+| `GET` | `/api/v1/export/products?format=xlsx` or `?format=csv` | JWT + product view/report permission | Export all organization products and inventory fields |
+| `GET` | `/api/v1/export/sales?format=xlsx` or `?format=csv` | JWT + sales view/report permission | Export completed non-Udhaar sales, one row per product sold |
+| `GET` | `/api/v1/export/stock-history?format=xlsx` or `?format=csv` | JWT + stock history/report permission | Export all organization stock movements |
+| `GET` | `/api/v1/export/customers?format=xlsx` or `?format=csv` | JWT + customer view permission | Export organization customer records |
+| `GET` | `/api/v1/export/udhaar?format=xlsx` or `?format=csv` | JWT + Udhaar view permission | Export Udhaar records and their line items |
 | `GET` | `/users/Profile` | JWT | Get own profile |
 | `PUT` | `/users/UpdateProfile` | JWT | Update own name/profile image |
 | `PUT` | `/users/TwoFactor` | JWT | Enable or disable email 2FA for the current user |
 | `PUT` | `/users/Organization` | JWT + admin | Update the current organization's name |
-| `DELETE` | `/users/Organization` | JWT + admin | Delete the current organization and its related data; body must include the exact `confirmationName` and `confirmationText: "DELETE"` |
+| `DELETE` | `/users/Organization` | JWT + admin | Delete the current organization and all related documents transactionally; body must include the exact `confirmationName` |
 | `PUT` | `/users/ChangePassword` | JWT | Change own password; required before using the app for temporary-password accounts |
 | `GET` | `/notifications?types=stock-low,stock-out,sale-created` | JWT + `notifications.view` | List visible notifications and the current member's unread count |
 | `GET` | `/notifications/stream` | JWT + `notifications.view` | Receive organization-scoped live notification events using SSE |

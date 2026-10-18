@@ -17,7 +17,15 @@ test("organization APIs reject requests without a bearer token", async (t) => {
     "/sales/",
     "/customers/",
     "/udhaar/",
-    "/notifications/"
+    "/notifications/",
+    "/api/v1/export/full-backup",
+    "/api/v1/export/reports",
+    "/api/v1/export/products",
+    "/api/v1/export/sales",
+    "/api/v1/export/stock-history",
+    "/api/v1/export/customers",
+    "/api/v1/export/udhaar",
+    "/feedback"
   ];
 
   const responses = await Promise.all(paths.map((path) => (

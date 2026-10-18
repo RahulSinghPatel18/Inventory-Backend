@@ -9,6 +9,8 @@ const salesRoutes = require("./routes/salesRoutes");
 const customerRoutes = require("./routes/customerRoutes");
 const udhaarRoutes = require("./routes/udhaarRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
+const exportRoutes = require("./routes/exportRoutes");
+const feedbackRoutes = require("./routes/feedbackRoutes");
 const cors = require("cors");
 
 const app = express();
@@ -66,6 +68,8 @@ app.use("/sales", loggerMiddleware, jwtMiddleware, salesRoutes);
 app.use("/customers", loggerMiddleware, jwtMiddleware, customerRoutes);
 app.use("/udhaar", loggerMiddleware, jwtMiddleware, udhaarRoutes);
 app.use("/notifications", notificationRoutes);
+app.use("/api/v1/export", jwtMiddleware, exportRoutes);
+app.use("/feedback", loggerMiddleware, jwtMiddleware, feedbackRoutes);
 
 app.get("/", (req, res) => {
   res.json({

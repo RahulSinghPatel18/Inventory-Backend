@@ -30,6 +30,7 @@ const {
   loginRateLimit,
   registerRateLimit,
   forgotPasswordRateLimit,
+  passwordResetOtpRateLimit,
   resetPasswordRateLimit,
   sendOtpRateLimit,
   verifyOtpRateLimit
@@ -47,7 +48,7 @@ router.post("/Google", loginRateLimit, googleLogin);
 router.post("/Google/Register", registerRateLimit, registerGoogleOrganization);
 router.post("/VerifyTwoFactor", verifyOtpRateLimit, verifyTwoFactor);
 router.post("/ForgotPassword", forgotPasswordRateLimit, forgotPassword);
-router.post("/VerifyResetOtp", verifyOtpRateLimit, verifyResetOtp);
+router.post("/VerifyResetOtp", passwordResetOtpRateLimit, verifyResetOtp);
 router.post("/ResetPassword", resetPasswordRateLimit, resetPassword);
 router.get("/Profile", jwtMiddleware, permission(["profile.view", "organization.view"]), getProfile);
 router.put("/UpdateProfile", jwtMiddleware, permission("profile.update"), updateProfile);
